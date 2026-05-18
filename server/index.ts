@@ -3,15 +3,21 @@ import session from 'express-session';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { getDb } from './db/index.js';
+import { getDb, getDbPathForLogs } from './db/index.js';
 import authRoutes from './routes/auth.js';
 import adminRoutes from './routes/admin.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
+const HOST = process.env.HOST?.trim() || '0.0.0.0';
 
-getDb();
+try {
+  getDb();
+} catch (err) {
+  console.error('[startup] Datenbank konnte nicht geöffnet werden:', err);
+  process.exit(1);
+}
 
 app.set('trust proxy', 1);
 app.use(
@@ -51,6 +57,7 @@ app.get('*', (req, res, next) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`RabbitStation API läuft auf http://127.0.0.1:${PORT}`);
+app.listen(PORT, HOST, () => {
+  console.log(`RabbitStation Control Center läuft auf http://${HOST}:${PORT}`);
+  console.log(`[startup] SQLite: ${getDbPathForLogs()}`);
 });

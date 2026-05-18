@@ -1,5 +1,7 @@
 node_modules/
 dist/
+.cache/
+.vite/
 /data/
 /data/*.db
 /data/*.db-*
