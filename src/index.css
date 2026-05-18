@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --neon-cyan: #00e5ff;
+  --neon-green: #00e676;
+  --neon-orange: #ff9100;
+  --neon-red: #ff5252;
+  --bg-deep: #050a14;
+  --card-bg: rgba(13, 22, 40, 0.85);
+  --border-glow: rgba(0, 229, 255, 0.15);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--bg-deep);
+  color: #e2e8f0;
+  -webkit-font-smoothing: antialiased;
+}
+
+@layer components {
+  .glass-card {
+    border-radius: 0.75rem;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 0 0 1px rgba(0, 229, 255, 0.12), 0 4px 24px rgba(0, 0, 0, 0.4);
+    background: linear-gradient(145deg, rgba(17, 29, 51, 0.9) 0%, rgba(10, 18, 32, 0.95) 100%);
+  }
+
+  .glass-card:hover {
+    border-color: rgba(0, 229, 255, 0.2);
+    transition: all 0.3s;
+    box-shadow: 0 0 0 1px rgba(0, 229, 255, 0.18), 0 8px 32px rgba(0, 0, 0, 0.45);
+  }
+
+  .status-pulse {
+    position: relative;
+  }
+
+  .status-pulse::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
+    opacity: 0.4;
+    background: currentColor;
+  }
+
+  .sidebar-active {
+    position: relative;
+    color: var(--neon-cyan);
+    background: linear-gradient(90deg, rgba(0, 229, 255, 0.12) 0%, transparent 100%);
+    box-shadow: inset 3px 0 0 var(--neon-cyan);
+  }
+
+  .sparkline-path {
+    stroke-dasharray: 200;
+    stroke-dashoffset: 200;
+    animation: drawSparkline 1.5s ease forwards;
+  }
+}
+
+@keyframes drawSparkline {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 229, 255, 0.2);
+  border-radius: 3px;
+}
