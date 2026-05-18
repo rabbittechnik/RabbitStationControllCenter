@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
-import type { ChartPoint, OverviewData, Tenant } from '../types';
+import type { ChartPoint, ControlCenterMeta, OverviewData, Tenant } from '../types';
 import { ControlCenterSidebar } from '../components/control-center/ControlCenterSidebar';
 import { ControlCenterHeader } from '../components/control-center/ControlCenterHeader';
+import { DataSourceBanner } from '../components/control-center/DataSourceBanner';
 import { SystemStatusCards } from '../components/control-center/SystemStatusCards';
 import { SystemHealthChart } from '../components/control-center/SystemHealthChart';
 import { LogsAndAlertsPanel } from '../components/control-center/LogsAndAlertsPanel';
@@ -13,9 +14,12 @@ import { BackupSecurityPanel } from '../components/control-center/BackupSecurity
 import { SystemInfoPanel } from '../components/control-center/SystemInfoPanel';
 import { SupportAccessModal } from '../components/control-center/SupportAccessModal';
 
+const AUTO_REFRESH_MS = 45_000;
+
 export function ControlCenterPage() {
   const { user } = useAuth();
   const [data, setData] = useState<OverviewData | null>(null);
+  const [meta, setMeta] = useState<ControlCenterMeta | null>(null);
   const [charts, setCharts] = useState<ChartPoint[]>([]);
   const [chartPeriod, setChartPeriod] = useState<'24h' | '7d' | '30d'>('24h');
   const [loading, setLoading] = useState(true);
@@ -26,11 +30,15 @@ export function ControlCenterPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebar, setMobileSidebar] = useState(false);
   const [supportTenant, setSupportTenant] = useState<Tenant | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadOverview = useCallback(async () => {
+    setLoadError(null);
     const overview = await api.getOverview();
-    setData(overview);
-    setCharts(overview.charts);
+    const { meta: m, ...rest } = overview;
+    setMeta(m);
+    setData(rest);
+    setCharts(rest.charts);
   }, []);
 
   const loadCharts = useCallback(async (period: '24h' | '7d' | '30d') => {
@@ -44,6 +52,7 @@ export function ControlCenterPage() {
       try {
         await loadOverview();
       } catch (e) {
+        setLoadError(e instanceof Error ? e.message : 'Daten konnten nicht geladen werden.');
         console.error(e);
       } finally {
         setLoading(false);
@@ -51,12 +60,21 @@ export function ControlCenterPage() {
     })();
   }, [loadOverview]);
 
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      void loadOverview().catch(() => {
+        /* Banner zeigt Demo/Live-Fehler */
+      });
+    }, AUTO_REFRESH_MS);
+    return () => window.clearInterval(id);
+  }, [loadOverview]);
+
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      const health = await api.runHealthCheck();
-      setData((prev) => (prev ? { ...prev, health } : prev));
       await loadOverview();
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : 'Aktualisierung fehlgeschlagen.');
     } finally {
       setRefreshing(false);
     }
@@ -65,8 +83,23 @@ export function ControlCenterPage() {
   const handleBackupCheck = async () => {
     setBackupChecking(true);
     try {
-      await api.runBackupCheck();
-      await loadOverview();
+      const backups = await api.runBackupCheck();
+      setData((prev) =>
+        prev ?
+          {
+            ...prev,
+            backups: {
+              lastBackupAt: (backups as { lastBackupAt?: string }).lastBackupAt ?? prev.backups.lastBackupAt,
+              lastBackupStatus:
+                (backups as { lastBackupStatus?: string }).lastBackupStatus ?? prev.backups.lastBackupStatus,
+              nextBackupAt: (backups as { nextBackupAt?: string }).nextBackupAt ?? prev.backups.nextBackupAt,
+              sizeBytes: (backups as { sizeBytes?: number }).sizeBytes ?? prev.backups.sizeBytes,
+              configured: (backups as { configured?: boolean }).configured,
+              message: (backups as { message?: string }).message,
+            },
+          }
+        : prev,
+      );
     } finally {
       setBackupChecking(false);
     }
@@ -109,6 +142,14 @@ export function ControlCenterPage() {
         />
 
         <main className="flex-1 overflow-y-auto p-4 lg:p-6">
+          <DataSourceBanner meta={meta} onRetry={handleRefresh} retrying={refreshing} />
+
+          {loadError ?
+            <div className="mb-4 rounded-lg border border-neon-red/40 bg-neon-red/10 px-4 py-3 text-sm text-red-200">
+              {loadError}
+            </div>
+          : null}
+
           <div className="mb-4">
             <SystemStatusCards health={data?.health ?? null} loading={loading} />
           </div>
@@ -124,6 +165,11 @@ export function ControlCenterPage() {
                 tenants={data?.tenants ?? []}
                 search={search}
                 onSupport={setSupportTenant}
+                emptyMessage={
+                  meta?.source === 'live' && (data?.tenants?.length ?? 0) === 0 ?
+                    'Keine Tenants gefunden.'
+                  : undefined
+                }
               />
               <SubscriptionRevenueCards data={data?.subscriptions ?? null} />
             </div>
@@ -133,6 +179,9 @@ export function ControlCenterPage() {
                 logs={data?.logs ?? []}
                 severityFilter={severityFilter}
                 onSeverityFilter={setSeverityFilter}
+                emptyMessage={
+                  (data?.logs?.length ?? 0) === 0 ? 'Keine aktuellen Meldungen.' : undefined
+                }
               />
               <BackupSecurityPanel
                 backups={data?.backups ?? null}

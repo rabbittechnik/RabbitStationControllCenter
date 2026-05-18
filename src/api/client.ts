@@ -1,3 +1,5 @@
+import type { ControlCenterMeta, ControlCenterOverviewResponse, HealthResponse } from '../types';
+
 const BASE = '/api';
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -24,28 +26,42 @@ export const api = {
     }),
   logout: () => request<{ ok: boolean }>('/auth/logout', { method: 'POST' }),
 
-  getOverview: () => request<import('../types').OverviewData>('/admin/control-center/overview'),
-  getHealth: () => request<import('../types').HealthResponse>('/admin/health'),
-  runHealthCheck: () =>
-    request<import('../types').HealthResponse>('/admin/health/run-check', { method: 'POST' }),
+  getConfigStatus: () =>
+    request<{ apiConfigured: boolean; error: string | null }>('/control-center/config-status'),
+
+  getOverview: () => request<ControlCenterOverviewResponse>('/control-center/overview'),
+
+  getHealth: () =>
+    request<HealthResponse & { meta?: ControlCenterMeta }>('/control-center/health'),
+
+  runHealthCheck: async () => {
+    const h = await api.getHealth();
+    return h;
+  },
+
   getCharts: (period: string) =>
     request<{ period: string; data: import('../types').ChartPoint[] }>(
       `/admin/charts?period=${period}`,
     ),
+
   getLogs: (severity?: string) =>
-    request<{ logs: import('../types').SystemLog[] }>(
-      `/admin/logs${severity ? `?severity=${severity}` : ''}`,
+    request<{ logs: import('../types').SystemLog[]; meta?: ControlCenterMeta; message?: string }>(
+      `/control-center/logs${severity ? `?severity=${severity}` : ''}`,
     ),
+
   getTenants: (search?: string) =>
-    request<{ tenants: import('../types').Tenant[] }>(
-      `/admin/tenants${search ? `?search=${encodeURIComponent(search)}` : ''}`,
+    request<{ tenants: import('../types').Tenant[]; meta?: ControlCenterMeta; message?: string }>(
+      `/control-center/tenants${search ? `?search=${encodeURIComponent(search)}` : ''}`,
     ),
-  runBackupCheck: () => request<unknown>('/admin/backups/run-check', { method: 'POST' }),
+
+  runBackupCheck: () => request<unknown>('/control-center/backups/status'),
+
   startSupportSession: (tenantId: string, reason?: string) =>
     request<{ sessionId: number }>(`/admin/tenants/${tenantId}/support-session/start`, {
       method: 'POST',
       body: JSON.stringify({ reason }),
     }),
+
   logControlCenterOpen: () =>
     request<{ ok: boolean }>('/admin/audit/control-center-opened', { method: 'POST' }),
 };

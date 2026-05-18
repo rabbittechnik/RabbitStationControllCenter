@@ -53,8 +53,11 @@ export function SystemStatusCards({ health, loading }: SystemStatusCardsProps) {
     },
     {
       title: 'Mail',
-      value: health.mail.status === 'ok' ? 'OK' : 'Warnung',
-      subtitle: `Zustellung ${health.mail.deliveryRate.toLocaleString('de-DE')} %`,
+      value: health.mail.status === 'ok' ? 'OK' : 'Unbekannt',
+      subtitle:
+        health.mail.deliveryRate > 0 ?
+          `Zustellung ${health.mail.deliveryRate.toLocaleString('de-DE')} %`
+        : 'Unbekannt',
       icon: Mail,
       variant: health.mail.status === 'ok' ? ('ok' as const) : ('warning' as const),
     },
@@ -83,8 +86,8 @@ export function SystemStatusCards({ health, loading }: SystemStatusCardsProps) {
     },
     {
       title: 'Uptime',
-      value: `${health.uptime.percent30Days} %`,
-      subtitle: 'Letzte 30 Tage',
+      value: health.uptime.percent30Days > 0 ? `${health.uptime.percent30Days} %` : 'Unbekannt',
+      subtitle: health.uptime.percent30Days > 0 ? 'Letzte 30 Tage' : 'Unbekannt',
       icon: Clock,
       variant: 'ok' as const,
       barData: [40, 65, 55, 80, 70, 90, 75, 85],

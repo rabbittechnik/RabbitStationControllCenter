@@ -38,9 +38,10 @@ export function SubscriptionRevenueCards({ data }: SubscriptionRevenueCardsProps
     },
     {
       title: 'Monatsumsatz',
-      value: formatCurrency(data.monthlyRevenue),
-      trend: data.monthlyRevenueTrend,
-      positive: true,
+      value: data.monthlyRevenue > 0 ? formatCurrency(data.monthlyRevenue) : '–',
+      trend:
+        data.monthlyRevenue > 0 ? data.monthlyRevenueTrend : 'Noch keine Zahlungsdaten verfügbar',
+      positive: data.monthlyRevenue > 0,
       highlight: true,
     },
   ];

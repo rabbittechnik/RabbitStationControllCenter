@@ -72,6 +72,9 @@ export interface SecuritySummary {
   failedLogins24h: number;
   activeSupportSessions: number;
   roleChanges24h: number;
+  blockedTenants?: number;
+  suspiciousApiRequests?: number;
+  lockedUsers?: number;
 }
 
 export interface BackupStatus {
@@ -79,6 +82,21 @@ export interface BackupStatus {
   lastBackupStatus: string;
   nextBackupAt: string;
   sizeBytes: number;
+  configured?: boolean;
+  message?: string;
+}
+
+export type DataSourceKind = 'live' | 'demo';
+
+export interface ControlCenterMeta {
+  source: DataSourceKind;
+  message?: string;
+  apiConfigured: boolean;
+  lastError?: string;
+}
+
+export interface ControlCenterOverviewResponse extends OverviewData {
+  meta: ControlCenterMeta;
 }
 
 export interface SystemInfo {

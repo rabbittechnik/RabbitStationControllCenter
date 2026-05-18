@@ -33,7 +33,17 @@ export function BackupSecurityPanel({
           </p>
           <p>
             Backup Status:{' '}
-            <span className="font-medium text-neon-green">Erfolgreich</span>
+            <span
+              className={`font-medium ${
+                backups?.configured === false ? 'text-neon-orange' : 'text-neon-green'
+              }`}
+            >
+              {backups?.configured === false ?
+                backups.message ?? 'Backup-System noch nicht konfiguriert'
+              : backups?.lastBackupStatus === 'success' ?
+                'Erfolgreich'
+              : (backups?.lastBackupStatus ?? 'Unbekannt')}
+            </span>
           </p>
         </div>
         <div className="space-y-2">
@@ -53,6 +63,12 @@ export function BackupSecurityPanel({
             Rollenänderungen:{' '}
             <span className="font-medium text-neon-orange">
               {security?.roleChanges24h ?? 0} letzte 24h
+            </span>
+          </p>
+          <p>
+            Gesperrte Tenants:{' '}
+            <span className="font-medium text-neon-red">
+              {security?.blockedTenants ?? 0}
             </span>
           </p>
         </div>

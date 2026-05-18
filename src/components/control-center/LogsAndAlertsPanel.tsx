@@ -36,6 +36,7 @@ interface LogsAndAlertsPanelProps {
   logs: SystemLog[];
   severityFilter: string;
   onSeverityFilter: (s: string) => void;
+  emptyMessage?: string;
 }
 
 function parseLogTitle(message: string): { title: string; text: string } {
@@ -48,6 +49,7 @@ export function LogsAndAlertsPanel({
   logs,
   severityFilter,
   onSeverityFilter,
+  emptyMessage,
 }: LogsAndAlertsPanelProps) {
   const filtered =
     severityFilter === 'all' ? logs : logs.filter((l) => l.severity === severityFilter);
@@ -77,6 +79,11 @@ export function LogsAndAlertsPanel({
       </select>
 
       <ul className="flex-1 space-y-2 overflow-y-auto">
+        {filtered.length === 0 ?
+          <li className="py-6 text-center text-xs text-slate-500">
+            {emptyMessage ?? 'Keine aktuellen Meldungen.'}
+          </li>
+        : null}
         {filtered.map((log) => {
           const cfg = severityConfig[log.severity] ?? severityConfig.info;
           const Icon = cfg.icon;

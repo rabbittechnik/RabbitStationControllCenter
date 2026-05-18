@@ -8,6 +8,7 @@ interface TenantOverviewTableProps {
   tenants: Tenant[];
   search: string;
   onSupport: (tenant: Tenant) => void;
+  emptyMessage?: string;
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -39,7 +40,12 @@ function PlanBadge({ plan }: { plan: string }) {
   );
 }
 
-export function TenantOverviewTable({ tenants, search, onSupport }: TenantOverviewTableProps) {
+export function TenantOverviewTable({
+  tenants,
+  search,
+  onSupport,
+  emptyMessage,
+}: TenantOverviewTableProps) {
   const filtered = search
     ? tenants.filter((t) => t.name.toLowerCase().includes(search.toLowerCase()))
     : tenants;
@@ -70,6 +76,13 @@ export function TenantOverviewTable({ tenants, search, onSupport }: TenantOvervi
             </tr>
           </thead>
           <tbody>
+            {filtered.length === 0 ?
+              <tr>
+                <td colSpan={8} className="py-8 text-center text-sm text-slate-500">
+                  {emptyMessage ?? 'Keine Tenants gefunden.'}
+                </td>
+              </tr>
+            : null}
             {filtered.map((tenant) => (
               <tr
                 key={tenant.id}
