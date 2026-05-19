@@ -224,9 +224,10 @@ export function classifyBackupsForDisplay(
   backupMeta?: { configured?: boolean; message?: string; lastBackupStatus?: string },
 ): ComponentDisplay {
   const message = healthBackups?.message ?? backupMeta?.message;
+  const healthStatus = healthBackups?.status;
   const notConfigured =
     backupMeta?.configured === false ||
-    isBackupSystemNotConfigured(healthBackups?.status, message);
+    isBackupSystemNotConfigured(healthStatus, message);
 
   if (notConfigured) {
     return {
@@ -236,15 +237,7 @@ export function classifyBackupsForDisplay(
       displaySubtitle: 'Backup-System noch nicht eingerichtet',
     };
   }
-  if (isRealBackupFailure(backupMeta?.configured, backupMeta?.lastBackupStatus, healthBackups?.status, message)) {
-    return {
-      status: 'error',
-      configured: true,
-      displayValue: 'Fehler',
-      displaySubtitle: message ?? 'Backup fehlgeschlagen',
-    };
-  }
-  if (backupMeta?.lastBackupStatus === 'success') {
+  if (healthStatus === 'ok' || backupMeta?.lastBackupStatus === 'success') {
     return {
       status: 'ok',
       configured: true,
@@ -252,11 +245,75 @@ export function classifyBackupsForDisplay(
       displaySubtitle: message ?? 'Backup erfolgreich',
     };
   }
+  if (isRealBackupFailure(backupMeta?.configured, backupMeta?.lastBackupStatus, healthStatus, message)) {
+    return {
+      status: 'error',
+      configured: true,
+      displayValue: 'Fehler',
+      displaySubtitle: message ?? 'Backup fehlgeschlagen',
+    };
+  }
   return {
     status: 'unknown',
-    configured: true,
-    displayValue: 'Unbekannt',
+    configured: backupMeta?.configured !== false,
+    displayValue: 'Nicht verfügbar',
     displaySubtitle: message ?? 'Noch kein Backup gelaufen',
+  };
+}
+
+/** Stellt sicher, dass alle Health-Teilbereiche existieren (kein Zugriff auf undefined.configured). */
+export function ensureHealthShape(partial: Partial<HealthResponse> | HealthResponse): HealthResponse {
+  const checkedAt =
+    typeof partial.checkedAt === 'string' ? partial.checkedAt : new Date().toISOString();
+  const mailPartial = partial.mail;
+  const paymentsPartial = partial.payments;
+
+  return {
+    overallStatus: parseHealthStatus(partial.overallStatus ?? 'unknown'),
+    overallLabel: partial.overallLabel,
+    checkedAt,
+    uptimeLabel: partial.uptimeLabel,
+    app: {
+      status: parseHealthStatus(partial.app?.status ?? 'unknown'),
+      message: partial.app?.message ?? 'Nicht verfügbar',
+    },
+    api: {
+      status: parseHealthStatus(partial.api?.status ?? 'unknown'),
+      responseTimeMs: partial.api?.responseTimeMs ?? 0,
+    },
+    database: {
+      status: parseHealthStatus(partial.database?.status ?? 'unknown'),
+      connections: partial.database?.connections ?? 0,
+    },
+    mail: {
+      status: parseHealthStatus(mailPartial?.status ?? 'unknown'),
+      deliveryRate: mailPartial?.deliveryRate ?? 0,
+      message: mailPartial?.message,
+      configured: mailPartial?.configured ?? mailPartial?.status === 'ok',
+    },
+    payments: {
+      status: parseHealthStatus(paymentsPartial?.status ?? 'unknown'),
+      openCases: paymentsPartial?.openCases ?? 0,
+      message: paymentsPartial?.message,
+      configured: paymentsPartial?.configured,
+    },
+    backups: {
+      status: parseHealthStatus(partial.backups?.status ?? 'unknown'),
+      lastBackupAt: partial.backups?.lastBackupAt ?? checkedAt,
+      nextBackupAt: partial.backups?.nextBackupAt ?? checkedAt,
+    },
+    storage: {
+      status: parseHealthStatus(partial.storage?.status ?? 'unknown'),
+      usedPercent: partial.storage?.usedPercent ?? 0,
+      usedGb: partial.storage?.usedGb ?? 0,
+      totalGb: partial.storage?.totalGb ?? 0,
+    },
+    uptime: {
+      status: parseHealthStatus(partial.uptime?.status ?? 'unknown'),
+      percent30Days: partial.uptime?.percent30Days ?? 0,
+    },
+    warnings: Array.isArray(partial.warnings) ? partial.warnings : [],
+    errors: Array.isArray(partial.errors) ? partial.errors : [],
   };
 }
 
@@ -376,7 +433,7 @@ export function normalizeAdminHealthPayload(
   if (health.ok === false) errors.push('Haupt-App meldet Fehlerstatus');
   if (dbStatus === 'error' && database?.message) errors.push(database.message);
 
-  return {
+  const normalized: HealthResponse = {
     overallStatus: parseHealthStatus(
       typeof health.overallStatus === 'string' ? health.overallStatus : 'ok',
     ),
@@ -428,6 +485,8 @@ export function normalizeAdminHealthPayload(
     warnings: mergeComponentWarnings(health),
     errors,
   };
+
+  return ensureHealthShape(normalized);
 }
 
 export function mapSystemInfoFromHealth(health: Record<string, unknown>): {

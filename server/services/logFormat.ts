@@ -7,6 +7,9 @@ const ACTION_LABELS: Record<string, string> = {
   login_failed: 'Login fehlgeschlagen',
   registration_welcome_email_failed: 'Willkommens-E-Mail konnte nicht gesendet werden',
   registration_welcome_email_sent: 'Willkommens-E-Mail gesendet',
+  registration_welcome_email_resent: 'Willkommens-E-Mail erneut gesendet',
+  registration_welcome_email_resend_failed:
+    'Willkommens-E-Mail konnte nicht erneut gesendet werden',
   backup_success: 'Backup erfolgreich',
   backup_failed: 'Backup fehlgeschlagen',
   subscription_changed: 'Abo geändert',
@@ -51,32 +54,77 @@ type RawLog = {
   created_at?: string;
 };
 
+const WELCOME_EMAIL_RESEND_ACTIONS = new Set([
+  'registration_welcome_email_failed',
+  'registration_welcome_email_resend_failed',
+]);
+
 type LogMeta = {
   userName?: string;
   userEmail?: string;
   userRole?: string;
   companyName?: string;
+  tenantName?: string;
+  stationName?: string;
+  safeMessage?: string;
+  errorCode?: string;
 };
 
 function parseMetadata(raw?: string | null): LogMeta {
   if (!raw?.trim()) return {};
   try {
     const m = JSON.parse(raw) as Record<string, unknown>;
+    const recipientEmail =
+      typeof m.recipientEmail === 'string' ? m.recipientEmail
+      : typeof m.recipient_email === 'string' ? m.recipient_email
+      : undefined;
     return {
       userName:
         typeof m.userName === 'string' ? m.userName
+        : typeof m.displayName === 'string' ? m.displayName
         : typeof m.name === 'string' ? m.name
         : undefined,
       userEmail:
         typeof m.userEmail === 'string' ? m.userEmail
-        : typeof m.email === 'string' ? m.email
-        : undefined,
+        : recipientEmail ?? (typeof m.email === 'string' ? m.email : undefined),
       userRole: typeof m.role === 'string' ? m.role : undefined,
-      companyName: typeof m.companyName === 'string' ? m.companyName : undefined,
+      companyName:
+        typeof m.companyName === 'string' ? m.companyName
+        : typeof m.tenantName === 'string' ? m.tenantName
+        : undefined,
+      tenantName: typeof m.tenantName === 'string' ? m.tenantName : undefined,
+      stationName: typeof m.stationName === 'string' ? m.stationName : undefined,
+      safeMessage: typeof m.safeMessage === 'string' ? m.safeMessage : undefined,
+      errorCode: typeof m.errorCode === 'string' ? m.errorCode : undefined,
     };
   } catch {
     return {};
   }
+}
+
+export function isWelcomeEmailResendLogAction(action: string): boolean {
+  return WELCOME_EMAIL_RESEND_ACTIONS.has(action.trim().toLowerCase());
+}
+
+export function welcomeEmailResendState(
+  tenantId: string | null | undefined,
+  userId: string | null | undefined,
+  userEmail: string | undefined,
+  action: string,
+): { canResend: boolean; disabledReason?: string } {
+  if (!isWelcomeEmailResendLogAction(action)) {
+    return { canResend: false };
+  }
+  if (!tenantId?.trim()) {
+    return { canResend: false, disabledReason: 'Benutzer konnte nicht eindeutig zugeordnet werden.' };
+  }
+  if (userId?.trim()) {
+    return { canResend: true };
+  }
+  if (userEmail?.trim()) {
+    return { canResend: false, disabledReason: 'Benutzer konnte nicht eindeutig zugeordnet werden.' };
+  }
+  return { canResend: false, disabledReason: 'Benutzer konnte nicht eindeutig zugeordnet werden.' };
 }
 
 function tenantLookup(tenants: Tenant[], tenantId: string | null | undefined) {
@@ -90,13 +138,15 @@ export function enrichLogs(rows: RawLog[], tenants: Tenant[]): SystemLog[] {
     const meta = parseMetadata(r.metadata_json);
     const tenant = tenantLookup(tenants, r.tenant_id);
 
-    const tenantName = tenant?.name ?? meta.companyName ?? null;
+    const tenantName = tenant?.name ?? meta.tenantName ?? meta.companyName ?? null;
     const tenantSlug = tenant?.slug ?? null;
     const tenantOperator = tenant?.operator ?? meta.userEmail ?? null;
+    const userEmail = meta.userEmail;
+    const resend = welcomeEmailResendState(r.tenant_id, r.user_id, userEmail, action);
 
     const userLabel =
       meta.userName ??
-      meta.userEmail ??
+      userEmail ??
       (r.user_id ? 'Unbekannter Benutzer' : null);
 
     const headline =
@@ -123,9 +173,14 @@ export function enrichLogs(rows: RawLog[], tenants: Tenant[]): SystemLog[] {
       tenant_slug: tenantSlug ?? undefined,
       tenant_operator: tenantOperator ?? undefined,
       user_name: meta.userName,
-      user_email: meta.userEmail,
+      user_email: userEmail,
       user_role: meta.userRole,
       user_label: userLabel ?? undefined,
+      station_name: meta.stationName,
+      error_message: meta.safeMessage,
+      error_code: meta.errorCode,
+      can_resend_welcome: resend.canResend,
+      resend_disabled_reason: resend.disabledReason,
       headline,
       subline,
       created_at: r.created_at ?? new Date().toISOString(),

@@ -77,6 +77,11 @@ export interface SystemLog {
   user_name?: string;
   user_email?: string;
   user_role?: string;
+  station_name?: string;
+  error_message?: string;
+  error_code?: string;
+  can_resend_welcome?: boolean;
+  resend_disabled_reason?: string;
   created_at: string;
 }
 

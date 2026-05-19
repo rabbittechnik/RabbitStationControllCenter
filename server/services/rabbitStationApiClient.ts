@@ -104,10 +104,14 @@ async function rabbitStationRequest<T>(
     }
 
     if (!res.ok) {
+      const body = json && typeof json === 'object' ? (json as Record<string, unknown>) : null;
+      const errCode =
+        body && typeof body.error === 'string' ? body.error
+        : body && typeof body.code === 'string' ? body.code
+        : undefined;
       const errMsg =
-        json && typeof json === 'object' && 'error' in json && typeof (json as { error?: unknown }).error === 'string'
-          ? String((json as { error: string }).error)
-          : `HTTP ${res.status}`;
+        body && typeof body.message === 'string' ? body.message
+        : errCode ?? `HTTP ${res.status}`;
       if (res.status === 401) {
         throw new RabbitStationApiError(
           'Zugriff auf Haupt-App Admin-API verweigert. Token prüfen.',
@@ -124,7 +128,7 @@ async function rabbitStationRequest<T>(
       if (res.status >= 500) {
         throw new RabbitStationApiError(`Haupt-App-Fehler: ${errMsg}`, 'server_error', res.status);
       }
-      throw new RabbitStationApiError(errMsg, 'http_error', res.status);
+      throw new RabbitStationApiError(errMsg, errCode ?? 'http_error', res.status);
     }
 
     if (json && typeof json === 'object' && 'ok' in json) {

@@ -66,6 +66,7 @@ export function OverviewPage() {
             severityFilter={severityFilter}
             onSeverityFilter={setSeverityFilter}
             emptyMessage={logsEmpty}
+            onLogsRefresh={refresh}
           />
           <BackupSecurityPanel
             backups={isLive ? (data?.backups ?? null) : null}

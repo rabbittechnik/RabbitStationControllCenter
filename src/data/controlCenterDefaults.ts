@@ -21,8 +21,8 @@ export const defaultHealth: HealthResponse = {
   app: { status: UNKNOWN_STATUS, message: 'Nicht verfügbar' },
   api: { status: UNKNOWN_STATUS, responseTimeMs: 0 },
   database: { status: UNKNOWN_STATUS, connections: 0 },
-  mail: { status: UNKNOWN_STATUS, deliveryRate: 0 },
-  payments: { status: UNKNOWN_STATUS, openCases: 0 },
+  mail: { status: UNKNOWN_STATUS, deliveryRate: 0, configured: false },
+  payments: { status: UNKNOWN_STATUS, openCases: 0, configured: false },
   backups: {
     status: UNKNOWN_STATUS,
     lastBackupAt: '',

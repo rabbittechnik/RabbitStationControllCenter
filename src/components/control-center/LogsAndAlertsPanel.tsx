@@ -1,6 +1,8 @@
 import { AlertTriangle, Info, CheckCircle, XCircle, AlertOctagon } from 'lucide-react';
 import type { SystemLog } from '../../types';
 import { formatTime } from '../../utils/format';
+import { LogAuditDetails } from './LogAuditDetails';
+import { ResendWelcomeEmailAction } from './ResendWelcomeEmailAction';
 
 const severityConfig: Record<
   string,
@@ -43,6 +45,7 @@ interface LogsAndAlertsPanelProps {
   severityFilter: string;
   onSeverityFilter: (s: string) => void;
   emptyMessage?: string;
+  onLogsRefresh?: () => void | Promise<void>;
 }
 
 export function LogsAndAlertsPanel({
@@ -50,6 +53,7 @@ export function LogsAndAlertsPanel({
   severityFilter,
   onSeverityFilter,
   emptyMessage,
+  onLogsRefresh,
 }: LogsAndAlertsPanelProps) {
   const list = Array.isArray(logs) ? logs : [];
   const filtered =
@@ -81,14 +85,20 @@ export function LogsAndAlertsPanel({
           </li>
         : null}
         {filtered.map((log) => (
-          <LogEntry key={log.id} log={log} />
+          <LogEntry key={log.id} log={log} onResendComplete={onLogsRefresh} />
         ))}
       </ul>
     </div>
   );
 }
 
-function LogEntry({ log }: { log: SystemLog }) {
+function LogEntry({
+  log,
+  onResendComplete,
+}: {
+  log: SystemLog;
+  onResendComplete?: () => void | Promise<void>;
+}) {
   const cfg = severityConfig[log.severity] ?? severityConfig.info;
   const Icon = cfg.icon;
   const title = log.action_label ?? log.message;
@@ -116,7 +126,9 @@ function LogEntry({ log }: { log: SystemLog }) {
             <p className="text-[10px] text-slate-500">{userLine}</p>
           : null}
           <p className={`mt-1 text-xs font-medium ${cfg.color}`}>{title}</p>
+          <LogAuditDetails log={log} />
           <p className="mt-1 text-[10px] text-slate-600">{formatTime(log.created_at)}</p>
+          <ResendWelcomeEmailAction log={log} onComplete={onResendComplete} compact />
         </div>
       </div>
     </li>

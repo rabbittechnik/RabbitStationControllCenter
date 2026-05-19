@@ -82,25 +82,51 @@ export function normalizeHealthResponse(partial?: Partial<HealthResponse> | null
   );
 
   const mail = mergeComponent(
-    { status: 'unknown' as HealthStatus, deliveryRate: 0, message: undefined, configured: undefined },
+    { status: 'unknown' as HealthStatus, deliveryRate: 0, message: undefined, configured: false },
     source?.mail,
-    (c) => ({
-      status: parseStatus(c?.status, 'unknown'),
-      deliveryRate: safeNumber(c?.deliveryRate, 0),
-      message: typeof c?.message === 'string' ? c.message : source?.mail?.message,
-      configured: source?.mail?.configured,
-    }),
+    (c) => {
+      const status = parseStatus(c?.status, 'unknown');
+      const configured =
+        source?.mail?.configured === true || status === 'ok';
+      return {
+        status,
+        deliveryRate: safeNumber(c?.deliveryRate, 0),
+        message:
+          typeof c?.message === 'string' ? c.message
+          : status === 'ok' ? 'SMTP konfiguriert'
+          : source?.mail?.message,
+        configured,
+      };
+    },
   );
 
   const payments = mergeComponent(
-    { status: 'unknown' as HealthStatus, openCases: 0, message: undefined, configured: undefined },
+    { status: 'unknown' as HealthStatus, openCases: 0, message: undefined, configured: false },
     source?.payments,
-    (c) => ({
-      status: parseStatus(c?.status, 'unknown'),
-      openCases: safeNumber(c?.openCases, 0),
-      message: typeof c?.message === 'string' ? c.message : source?.payments?.message,
-      configured: source?.payments?.configured,
-    }),
+    (c) => {
+      const status = parseStatus(c?.status, 'unknown');
+      const message =
+        typeof c?.message === 'string' ? c.message
+        : source?.payments?.message;
+      const msgLower = (message ?? '').toLowerCase();
+      const configured =
+        source?.payments?.configured === true ?
+          true
+        : source?.payments?.configured === false ?
+          false
+        : msgLower.includes('payment provider not configured') ?
+          false
+        : status === 'ok';
+      return {
+        status,
+        openCases: safeNumber(c?.openCases, 0),
+        message:
+          !configured && msgLower.includes('not configured') ?
+            'Zahlungssystem noch nicht angebunden'
+          : message,
+        configured,
+      };
+    },
   );
 
   const backups = mergeComponent(

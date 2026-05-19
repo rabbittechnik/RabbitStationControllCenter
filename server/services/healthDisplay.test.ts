@@ -76,4 +76,14 @@ describe('computeOverallDisplayStatus', () => {
     );
     assert.equal(result.label, 'outage');
   });
+
+  it('does not crash when mail/payments objects are missing', () => {
+    const broken = {
+      ...baseHealth(),
+      mail: undefined,
+      payments: undefined,
+    } as unknown as HealthResponse;
+    const result = computeOverallDisplayStatus(broken, notConfiguredBackup, []);
+    assert.ok(result.label);
+  });
 });

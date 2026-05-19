@@ -169,25 +169,35 @@ export function mapBackupStatus(data: {
   configured?: boolean;
   lastBackup?: string | null;
   message?: string;
+  status?: string;
 }): BackupStatus {
   const now = new Date().toISOString();
-  if (!data.configured) {
+  const message = data.message ?? '';
+  const status = typeof data.status === 'string' ? data.status : undefined;
+  const notConfigured =
+    data.configured === false ||
+    status === 'not_configured' ||
+    (message.toLowerCase().includes('not configured') && message.toLowerCase().includes('backup'));
+
+  if (notConfigured) {
     return {
       lastBackupAt: now,
       lastBackupStatus: 'not_configured',
       nextBackupAt: now,
       sizeBytes: 0,
       configured: false,
-      message: data.message ?? 'Backup-System noch nicht konfiguriert',
+      message: message || 'Backup-System noch nicht konfiguriert',
     };
   }
+
+  const configured = data.configured === true || status === 'ok' || Boolean(data.lastBackup);
   return {
     lastBackupAt: data.lastBackup ?? now,
-    lastBackupStatus: data.lastBackup ? 'success' : 'unknown',
+    lastBackupStatus: data.lastBackup ? 'success' : status === 'ok' ? 'success' : 'unknown',
     nextBackupAt: now,
     sizeBytes: 0,
-    configured: true,
-    message: data.message,
+    configured,
+    message: message || undefined,
   };
 }
 

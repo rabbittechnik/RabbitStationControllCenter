@@ -108,6 +108,19 @@ export function ControlCenterProvider({ children }: { children: ReactNode }) {
     const overviewResult = await api.getOverview();
     if (!overviewResult.ok) {
       const code = overviewResult.error;
+      if (code === 'health_mapping_error') {
+        setLoadError('Control-Center-Anzeige konnte Health-Daten nicht verarbeiten.');
+        setMeta({
+          source: 'live',
+          apiConfigured: true,
+          apiUrlSet: cfg.apiUrlSet,
+          tokenSet: cfg.tokenSet,
+          message: overviewResult.message,
+          lastError: overviewResult.message,
+        });
+        setData(null);
+        return;
+      }
       if (code === 'unauthorized' || code === 'forbidden') {
         setLoadError('Keine Berechtigung oder Token ungültig');
       } else {

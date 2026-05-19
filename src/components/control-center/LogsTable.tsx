@@ -1,5 +1,8 @@
 import type { SystemLog } from '../../types';
 import { formatDateTime } from '../../utils/format';
+import { LogAuditDetails } from './LogAuditDetails';
+import { ResendWelcomeEmailAction } from './ResendWelcomeEmailAction';
+import { showWelcomeEmailResendControl } from '../../utils/welcomeEmailLog';
 import {
   filterLogs,
   type LogCategoryFilter,
@@ -21,6 +24,7 @@ interface LogsTableProps {
   search: string;
   tenantId?: string | null;
   emptyMessage?: string;
+  onLogsRefresh?: () => void | Promise<void>;
 }
 
 export function LogsTable({
@@ -30,8 +34,10 @@ export function LogsTable({
   search,
   tenantId,
   emptyMessage,
+  onLogsRefresh,
 }: LogsTableProps) {
   const filtered = filterLogs(logs, { severity, category, search, tenantId });
+  const showActionsColumn = filtered.some((l) => showWelcomeEmailResendControl(l));
 
   return (
     <div className="glass-card overflow-hidden">
@@ -46,12 +52,18 @@ export function LogsTable({
               <th className="px-3 py-2 font-medium">Station</th>
               <th className="px-3 py-2 font-medium">Benutzer</th>
               <th className="px-3 py-2 font-medium">Kategorie</th>
+              {showActionsColumn ?
+                <th className="px-3 py-2 font-medium">Aktionen</th>
+              : null}
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 ?
               <tr>
-                <td colSpan={7} className="px-3 py-10 text-center text-sm text-slate-500">
+                <td
+                  colSpan={showActionsColumn ? 8 : 7}
+                  className="px-3 py-10 text-center text-sm text-slate-500"
+                >
                   {emptyMessage ?? 'Keine aktuellen Systemmeldungen.'}
                 </td>
               </tr>
@@ -73,14 +85,20 @@ export function LogsTable({
                   {log.severity}
                 </td>
                 <td className="px-3 py-2.5 font-medium text-slate-200">
-                  {log.action_label ?? log.message}
+                  <div>{log.action_label ?? log.message}</div>
+                  <LogAuditDetails log={log} />
                 </td>
-                <td className="px-3 py-2.5 text-slate-300">{log.headline ?? 'Plattform'}</td>
-                <td className="px-3 py-2.5 text-slate-400">{log.tenant_slug ?? '–'}</td>
+                <td className="px-3 py-2.5 text-slate-300">{log.tenant_name ?? log.headline ?? 'Plattform'}</td>
+                <td className="px-3 py-2.5 text-slate-400">{log.station_name ?? log.tenant_slug ?? '–'}</td>
                 <td className="max-w-[200px] truncate px-3 py-2.5 text-slate-400" title={log.user_email}>
                   {log.user_label ?? log.user_email ?? (log.user_id ? 'Unbekannter Benutzer' : '–')}
                 </td>
                 <td className="px-3 py-2.5 text-slate-500">{log.category}</td>
+                {showActionsColumn ?
+                  <td className="px-3 py-2.5">
+                    <ResendWelcomeEmailAction log={log} onComplete={onLogsRefresh} compact />
+                  </td>
+                : null}
               </tr>
             ))}
           </tbody>

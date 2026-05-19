@@ -218,7 +218,14 @@ export async function fetchLiveOverview(): Promise<LoadResult> {
     tenantsRes.tenants,
   );
   const tenants = applyTenantActivityFromLogs(tenantsRes.tenants, logs);
-  const health = refineHealthComponents(healthBundle.health, healthBundle.backups, logs);
+
+  let health = healthBundle.health;
+  try {
+    health = refineHealthComponents(healthBundle.health, healthBundle.backups, logs);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Unbekannter Fehler';
+    throw new Error(`Control-Center-Anzeige konnte Health-Daten nicht verarbeiten: ${msg}`);
+  }
 
   const ccUptimeSec = process.uptime();
   const ccDays = Math.floor(ccUptimeSec / 86400);

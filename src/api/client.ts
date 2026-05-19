@@ -202,4 +202,10 @@ export const api = {
         body: JSON.stringify(body),
       },
     ),
+
+  resendWelcomeEmail: (tenantId: string, userId: string) =>
+    requestSafe<{ ok: boolean; message?: string }>(
+      `/control-center/tenants/${encodeURIComponent(tenantId)}/users/${encodeURIComponent(userId)}/resend-welcome-email`,
+      { method: 'POST', body: JSON.stringify({}) },
+    ),
 };

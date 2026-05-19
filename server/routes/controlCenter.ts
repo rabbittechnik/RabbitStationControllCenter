@@ -15,6 +15,11 @@ import {
   startLiveSupportSession,
 } from '../services/controlCenterDataService.js';
 import {
+  mapResendWelcomeEmailUserMessage,
+  resendLiveWelcomeEmail,
+  resendWelcomeEmailHttpStatus,
+} from '../services/resendWelcomeEmailProxy.js';
+import {
   getConfigStatusDetails,
   getRabbitStationConfig,
   RabbitStationApiError,
@@ -47,6 +52,14 @@ router.get('/overview', async (_req, res) => {
     const result = await fetchLiveOverview();
     res.json({ ...result.data, meta: result.meta });
   } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Unbekannter Fehler';
+    if (msg.includes('Health-Daten nicht verarbeiten')) {
+      return res.status(500).json({
+        error: msg,
+        code: 'health_mapping_error',
+        meta: buildErrorMeta(msg),
+      });
+    }
     handleError(res, e);
   }
 });
@@ -260,6 +273,47 @@ router.post('/tenants/:tenantId/support-sessions/start', async (req, res) => {
           meta: buildErrorMeta(e.message),
         });
       }
+    }
+    handleError(res, e);
+  }
+});
+
+router.post('/tenants/:tenantId/users/:userId/resend-welcome-email', async (req, res) => {
+  try {
+    const tenantId = String(req.params.tenantId ?? '').trim();
+    const userId = String(req.params.userId ?? '').trim();
+    if (!tenantId || !userId) {
+      return res.status(400).json({
+        ok: false,
+        error: 'invalid_params',
+        message: 'Benutzer konnte nicht gefunden werden.',
+        meta: buildErrorMeta('Tenant- oder Benutzer-ID fehlt.'),
+      });
+    }
+    const result = await resendLiveWelcomeEmail(tenantId, userId);
+    res.json({
+      ok: true,
+      message: result.message,
+      meta: { source: 'live', apiConfigured: true, apiUrlSet: true, tokenSet: true },
+    });
+  } catch (e) {
+    if (e instanceof RabbitStationApiError) {
+      const message = mapResendWelcomeEmailUserMessage(e.code, e.message);
+      const status = resendWelcomeEmailHttpStatus(e.code, e.status);
+      if (e.code === 'unauthorized' || e.code === 'forbidden') {
+        return res.status(status).json({
+          ok: false,
+          error: e.code,
+          message: 'Keine Berechtigung für diesen Vorgang.',
+          meta: buildErrorMeta(e.message),
+        });
+      }
+      return res.status(status).json({
+        ok: false,
+        error: e.code,
+        message,
+        meta: buildErrorMeta(e.message),
+      });
     }
     handleError(res, e);
   }

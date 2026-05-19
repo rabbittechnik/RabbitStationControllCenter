@@ -11,6 +11,14 @@ import {
 import { StatusCard } from './StatusCard';
 import type { BackupStatus, HealthResponse, HealthStatus } from '../../types';
 import { uptimeDisplaySubtitle, uptimeDisplayValue } from '../../utils/healthNormalize';
+import {
+  backupCardValue,
+  mailCardValue,
+  mailConfiguredFlag,
+  paymentsCardValue,
+  paymentsConfiguredFlag,
+  statusVariant,
+} from '../../utils/healthDisplay';
 import { formatTime } from '../../utils/format';
 import { safeText } from '../../utils/safeDisplay';
 
@@ -19,13 +27,6 @@ interface SystemStatusCardsProps {
   backups?: BackupStatus | null;
   loading?: boolean;
   unavailable?: boolean;
-}
-
-function statusVariant(status: HealthStatus | undefined): 'ok' | 'warning' | 'error' | 'neutral' {
-  if (status === 'ok') return 'ok';
-  if (status === 'unknown') return 'neutral';
-  if (status === 'warning') return 'warning';
-  return 'error';
 }
 
 function coreLabel(status: HealthStatus | undefined, ok: string, bad: string): string {
@@ -42,36 +43,25 @@ export function SystemStatusCards({ health, backups, loading, unavailable }: Sys
   const mail = health.mail;
   const payments = health.payments;
   const backupConfigured = backups?.configured === true;
+  const mailOk = mailConfiguredFlag(mail);
 
-  const mailValue =
-    mail.configured === false ? 'Nicht konfiguriert'
-    : mail.status === 'warning' ? 'Warnung'
-    : mail.status === 'error' ? 'Fehler'
-    : 'OK';
+  const mailValue = mailCardValue(mail);
 
   const mailSubtitle =
-    mail.configured === true && mail.status === 'ok' ?
-      safeText(mail.message, 'SMTP konfiguriert')
-    : safeText(mail.message, 'SMTP-Status unbekannt');
+    mailOk && mail?.status === 'ok' ?
+      safeText(mail?.message, 'SMTP konfiguriert')
+    : safeText(mail?.message, 'SMTP-Status unbekannt');
 
-  const paymentsValue =
-    payments.configured === false ? 'Nicht konfiguriert'
-    : payments.openCases && payments.openCases > 0 ? 'Warnung'
-    : payments.status === 'error' ? 'Fehler'
-    : 'OK';
+  const paymentsValue = paymentsCardValue(payments);
 
   const paymentsSubtitle =
-    payments.configured === false ?
+    !paymentsConfiguredFlag(payments) ?
       'Zahlungssystem noch nicht angebunden'
-    : payments.openCases && payments.openCases > 0 ?
+    : (payments?.openCases ?? 0) > 0 ?
       `${payments.openCases} offene Fälle`
-    : safeText(payments.message, 'Keine offenen Zahlungsfälle');
+    : safeText(payments?.message, 'Keine offenen Zahlungsfälle');
 
-  const backupValue =
-    backupConfigured === false ? 'Nicht konfiguriert'
-    : backups?.lastBackupStatus === 'success' ? 'OK'
-    : backups?.lastBackupStatus === 'error' || backups?.lastBackupStatus === 'failed' ? 'Fehler'
-    : 'Unbekannt';
+  const backupValue = backupCardValue(backups);
 
   const backupSubtitle =
     backupConfigured === false ?
@@ -115,8 +105,8 @@ export function SystemStatusCards({ health, backups, loading, unavailable }: Sys
       subtitle: mailSubtitle,
       icon: Mail,
       variant:
-        mail.configured === false ? ('neutral' as const)
-        : statusVariant(mail.status),
+        !mailOk ? ('neutral' as const)
+        : statusVariant(mail?.status),
     },
     {
       title: 'Zahlungen',
@@ -124,8 +114,8 @@ export function SystemStatusCards({ health, backups, loading, unavailable }: Sys
       subtitle: paymentsSubtitle,
       icon: CreditCard,
       variant:
-        payments.configured === false ? ('neutral' as const)
-        : statusVariant(payments.status),
+        !paymentsConfiguredFlag(payments) ? ('neutral' as const)
+        : statusVariant(payments?.status),
     },
     {
       title: 'Backups',

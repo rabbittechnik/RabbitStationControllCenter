@@ -121,3 +121,70 @@ describe('databaseVersionLabel', () => {
     assert.match(label, /23/);
   });
 });
+
+describe('robust health variants', () => {
+  const backupMeta = { configured: true, lastBackupStatus: 'success' as const };
+
+  it('A) mail only with status ok', () => {
+    const health = normalizeHealthResponse(
+      { ok: true, data: { mail: { status: 'ok' }, app: { status: 'ok' }, api: { status: 'ok' }, database: { status: 'ok' } } },
+      backupMeta,
+      1,
+      true,
+    );
+    assert.equal(health.mail.status, 'ok');
+    assert.equal(health.mail.configured, true);
+    assert.equal(health.mail.message, 'SMTP konfiguriert');
+  });
+
+  it('B) payments without configured field', () => {
+    const health = normalizeHealthResponse(
+      {
+        payments: { status: 'warning', message: 'Payment provider not configured' },
+        app: { status: 'ok' },
+        api: { status: 'ok' },
+        database: { status: 'ok' },
+        mail: { status: 'ok' },
+      },
+      backupMeta,
+      1,
+      true,
+    );
+    assert.equal(health.payments.configured, false);
+    assert.match(health.payments.message ?? '', /noch nicht angebunden/i);
+  });
+
+  it('C) backups only with status ok', () => {
+    const health = normalizeHealthResponse(
+      { backups: { status: 'ok' }, app: { status: 'ok' }, api: { status: 'ok' }, database: { status: 'ok' }, mail: { status: 'ok' } },
+      { configured: true, lastBackupStatus: 'success' },
+      1,
+      true,
+    );
+    assert.equal(health.backups.status, 'ok');
+  });
+
+  it('D) accepts envelope with data wrapper', () => {
+    const health = normalizeHealthResponse(
+      { ok: true, data: { overallStatus: 'warning', mail: { status: 'ok' } } },
+      backupMeta,
+      1,
+      true,
+    );
+    assert.equal(health.overallStatus, 'warning');
+    assert.equal(health.mail.configured, true);
+  });
+
+  it('E) missing mail, payments, backups sections', () => {
+    const health = normalizeHealthResponse(
+      { app: { status: 'ok' }, api: { status: 'ok' }, database: { status: 'ok' } },
+      {},
+      1,
+      true,
+    );
+    assert.ok(health.mail);
+    assert.ok(health.payments);
+    assert.ok(health.backups);
+    assert.equal(typeof health.mail.configured, 'boolean');
+  });
+});

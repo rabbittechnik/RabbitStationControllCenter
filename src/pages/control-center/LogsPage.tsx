@@ -6,7 +6,7 @@ import { LogsFilterBar, LogsTable } from '../../components/control-center/LogsTa
 import type { LogCategoryFilter, LogSeverityFilter } from '../../utils/logFilters';
 
 export function LogsPage() {
-  const { data, isLive, loading, search } = useControlCenter();
+  const { data, isLive, loading, search, refresh } = useControlCenter();
   const [params] = useSearchParams();
   const tenantId = params.get('tenant');
   const [severity, setSeverity] = useState<LogSeverityFilter>('all');
@@ -42,6 +42,7 @@ export function LogsPage() {
         search={search}
         tenantId={tenantId}
         emptyMessage={empty}
+        onLogsRefresh={refresh}
       />
     </>
   );
