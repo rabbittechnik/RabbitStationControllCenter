@@ -12,6 +12,7 @@ import {
   mapSystemInfoFromHealth,
   normalizeAdminHealthPayload,
 } from './healthNormalize.js';
+import { enrichLogs } from './logFormat.js';
 
 type MainTenant = {
   id: string;
@@ -80,7 +81,8 @@ export function mapTenants(rows: MainTenant[]): Tenant[] {
       trial_days_left: t.trialDaysLeft ?? null,
       employees: t.userCount ?? 0,
       station_count: t.stationCount ?? 0,
-      last_activity_minutes: 9999,
+      last_activity_minutes: null,
+      last_activity_at: null,
       locked: status === 'blocked' ? 1 : 0,
       current_period_start: t.currentPeriodStart ?? null,
       current_period_end: t.currentPeriodEnd ?? null,
@@ -139,33 +141,8 @@ export function mapSubscriptionSummary(
   };
 }
 
-function severityForAction(action: string): string {
-  if (action.includes('failed') || action.includes('blocked') || action.includes('denied')) {
-    return 'error';
-  }
-  if (action.includes('expired') || action.includes('past_due') || action.includes('changed')) {
-    return 'warning';
-  }
-  if (action.includes('created') || action.includes('success') || action.includes('active')) {
-    return 'success';
-  }
-  return 'info';
-}
-
-export function mapLogs(rows: MainLog[]): SystemLog[] {
-  return rows.map((r, i) => {
-    const action = r.action ?? 'event';
-    const tenant = r.tenant_id ? `Tenant ${r.tenant_id.slice(0, 8)}…` : 'Plattform';
-    return {
-      id: typeof r.id === 'number' ? r.id : i + 1,
-      tenant_id: r.tenant_id ?? null,
-      severity: severityForAction(action),
-      category: r.entity_type ?? 'audit',
-      action,
-      message: `${action} – ${tenant}${r.user_id ? ` · User ${r.user_id.slice(0, 8)}…` : ''}`,
-      created_at: r.created_at ?? new Date().toISOString(),
-    };
-  });
+export function mapLogs(rows: MainLog[], tenants: Tenant[] = []): SystemLog[] {
+  return enrichLogs(rows, tenants);
 }
 
 export function mapSecuritySummary(data: {

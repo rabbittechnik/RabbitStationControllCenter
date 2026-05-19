@@ -16,7 +16,7 @@ type HealthComponent = {
 };
 
 export function parseHealthStatus(value: unknown): HealthStatus {
-  if (value === 'ok' || value === 'warning' || value === 'error') return value;
+  if (value === 'ok' || value === 'warning' || value === 'error' || value === 'unknown') return value;
   return 'warning';
 }
 
@@ -88,8 +88,8 @@ export function normalizeAdminHealthPayload(
       app: { status: 'error', message: 'Haupt-App nicht erreichbar' },
       api: { status: 'error', responseTimeMs: 0 },
       database: { status: 'error', connections: 0 },
-      mail: { status: 'warning', deliveryRate: 0 },
-      payments: { status: 'warning', openCases: 0 },
+      mail: { status: 'unknown', deliveryRate: 0, message: 'Nicht verfügbar' },
+      payments: { status: 'unknown', openCases: 0, message: 'Nicht verfügbar' },
       backups: { status: 'error', lastBackupAt: checkedAt, nextBackupAt: checkedAt },
       storage: { status: 'warning', usedPercent: 0, usedGb: 0, totalGb: 0 },
       uptime: { status: 'warning', percent30Days: 0 },
@@ -109,7 +109,8 @@ export function normalizeAdminHealthPayload(
 
   const backupOk = backups.configured === true;
   const backupStatus: HealthStatus =
-    backupsHealth?.status ?
+    backups.configured === false ? 'unknown'
+    : backupsHealth?.status ?
       parseHealthStatus(backupsHealth.status)
     : backupOk ? 'ok'
     : 'warning';
@@ -170,10 +171,12 @@ export function normalizeAdminHealthPayload(
     mail: {
       status: parseHealthStatus(mail?.status ?? 'warning'),
       deliveryRate: mail?.deliveryRate ?? 0,
+      message: mail?.message,
     },
     payments: {
       status: parseHealthStatus(payments?.status ?? 'warning'),
       openCases: payments?.openCases ?? 0,
+      message: payments?.message,
     },
     backups: {
       status: backupStatus,

@@ -1,6 +1,6 @@
 import { Building2, Crown, Gem, Layers } from 'lucide-react';
 import type { Tenant } from '../../types';
-import { activityLabel, formatTrialEnd } from '../../utils/format';
+import { formatRelativeActivity, formatTrialEnd } from '../../utils/format';
 import { planLabel, statusBadgeClass, statusLabel, trialDaysLabel } from '../../utils/tenantPlan';
 import { TenantActionMenu, type TenantAction } from './TenantActionMenu';
 
@@ -99,18 +99,18 @@ export function TenantOverviewTable({
   };
 
   return (
-    <div className="glass-card overflow-hidden p-4">
+    <div id="cc-section-tenants" className="glass-card overflow-hidden p-4">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-white">Tenants &amp; Abos</h3>
         <span className="text-[10px] text-slate-500">{filtered.length} Mandanten</span>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1100px] text-left text-xs">
+        <table className="w-full min-w-[1200px] text-left text-xs">
           <thead>
             <tr className="border-b border-white/5 text-slate-500">
-              <th className="pb-2 font-medium">Tenant / Firma</th>
+              <th className="pb-2 font-medium">Firma / Tenant</th>
               <th className="pb-2 font-medium">Station</th>
-              <th className="pb-2 font-medium">Betreiber</th>
+              <th className="pb-2 font-medium">Betreiber-E-Mail</th>
               <th className="pb-2 font-medium">Plan</th>
               <th className="pb-2 font-medium">Status</th>
               <th className="pb-2 font-medium">Trial-Ende</th>
@@ -148,7 +148,7 @@ export function TenantOverviewTable({
                   </span>
                 </td>
                 <td className="py-3 text-slate-400">{tenant.slug ?? '–'}</td>
-                <td className="max-w-[140px] truncate py-3 text-slate-400" title={tenant.operator}>
+                <td className="max-w-[180px] truncate py-3 text-slate-400" title={tenant.operator}>
                   {tenant.operator ?? '–'}
                 </td>
                 <td className="py-3">
@@ -158,11 +158,16 @@ export function TenantOverviewTable({
                   <StatusBadge status={tenant.status} />
                 </td>
                 <td className="py-3 text-slate-400">{formatTrialEnd(tenant.trial_end)}</td>
-                <td className="py-3 text-slate-400">{trialDaysLabel(tenant.trial_days_left)}</td>
+                <td className="py-3 text-slate-400">
+                  {trialDaysLabel(tenant.trial_days_left, tenant.status)}
+                </td>
                 <td className="py-3 text-slate-400">{tenant.employees}</td>
                 <td className="py-3 text-slate-400">{tenant.station_count}</td>
                 <td className="py-3 text-slate-400">
-                  {activityLabel(tenant.last_activity_minutes)}
+                  {formatRelativeActivity(
+                    tenant.last_activity_minutes,
+                    tenant.last_activity_at,
+                  )}
                 </td>
                 <td className="py-3">
                   <TenantActionMenu

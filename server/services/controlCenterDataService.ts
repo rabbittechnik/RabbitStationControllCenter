@@ -15,6 +15,8 @@ import {
   mapTenants,
 } from './rabbitStationMappers.js';
 import type { ControlCenterMeta, OverviewData } from '../types.js';
+import { applyTenantActivityFromLogs } from './logFormat.js';
+import { refineHealthComponents } from './healthDisplay.js';
 
 export type LoadResult = {
   data: OverviewData;
@@ -94,10 +96,11 @@ export async function patchLiveTenantSubscription(tenantId: string, body: Record
 export async function fetchLiveLogs(limit = 50) {
   const cfg = getRabbitStationConfig();
   if (!cfg.ready) throw new RabbitStationApiError(cfg.error, 'config_missing');
-  const data = await rabbitStationFetch<{ logs: Record<string, unknown>[] }>(
-    `/api/admin/logs?limit=${limit}`,
-  );
-  return { logs: mapLogs((data.logs ?? []) as Parameters<typeof mapLogs>[0]) };
+  const [{ tenants }, data] = await Promise.all([
+    fetchLiveTenants(),
+    rabbitStationFetch<{ logs: Record<string, unknown>[] }>(`/api/admin/logs?limit=${limit}`),
+  ]);
+  return { logs: mapLogs((data.logs ?? []) as Parameters<typeof mapLogs>[0], tenants) };
 }
 
 export async function fetchLiveSecurity() {
@@ -121,18 +124,53 @@ export async function fetchLiveOverview(): Promise<LoadResult> {
     throw new RabbitStationApiError(cfg.error, 'config_missing');
   }
 
-  const [healthBundle, tenantsRes, subsRaw, logsRes, securityRes] = await Promise.all([
+  const [healthBundle, tenantsRes, subsRaw, logsRaw, securityRes] = await Promise.all([
     fetchLiveHealthBundle(),
     fetchLiveTenants(),
     rabbitStationFetch<{
       byStatus?: { subscription_status: string; c: number }[];
       expiringTrials?: unknown[];
     }>('/api/admin/subscriptions/summary'),
-    fetchLiveLogs(30),
+    rabbitStationFetch<{ logs: Record<string, unknown>[] }>('/api/admin/logs?limit=80'),
     fetchLiveSecurity(),
   ]);
   const subsRes = {
     subscriptions: mapSubscriptionSummary(subsRaw, tenantsRes.tenants),
+  };
+
+  const logs = mapLogs(
+    (logsRaw.logs ?? []) as Parameters<typeof mapLogs>[0],
+    tenantsRes.tenants,
+  );
+  const tenants = applyTenantActivityFromLogs(tenantsRes.tenants, logs);
+  const health = refineHealthComponents(healthBundle.health, healthBundle.backups, logs);
+
+  const ccUptimeSec = process.uptime();
+  const ccDays = Math.floor(ccUptimeSec / 86400);
+  const ccHours = Math.floor((ccUptimeSec % 86400) / 3600);
+  const systemInfo = {
+    ...healthBundle.systemInfo,
+    mainApp: {
+      label: 'RabbitStation Haupt-App',
+      environment: healthBundle.systemInfo.environment,
+      version: healthBundle.systemInfo.version,
+      databaseVersion: healthBundle.systemInfo.databaseVersion,
+      nodeVersion: healthBundle.systemInfo.nodeVersion,
+      region: healthBundle.systemInfo.region,
+      lastDeploy: healthBundle.systemInfo.lastDeploy,
+      uptime: healthBundle.systemInfo.uptime,
+      serverTime: healthBundle.systemInfo.serverTime,
+    },
+    controlCenter: {
+      label: 'RabbitStation Control Center',
+      version: process.env.npm_package_version ?? '2.3.0',
+      build: 'live',
+      nodeVersion: process.version,
+      region: 'Railway',
+      uptime: ccDays > 0 ? `${ccDays} Tage, ${ccHours} Std.` : `${ccHours} Std.`,
+      serverTime: new Date().toISOString(),
+      apiConnected: true,
+    },
   };
 
   return {
@@ -143,12 +181,12 @@ export async function fetchLiveOverview(): Promise<LoadResult> {
       tokenSet: true,
     },
     data: {
-      health: healthBundle.health,
+      health,
       backups: healthBundle.backups,
-      systemInfo: healthBundle.systemInfo,
-      tenants: tenantsRes.tenants,
+      systemInfo,
+      tenants,
       subscriptions: subsRes.subscriptions,
-      logs: logsRes.logs,
+      logs,
       security: securityRes.security,
       charts: emptyCharts(),
     },

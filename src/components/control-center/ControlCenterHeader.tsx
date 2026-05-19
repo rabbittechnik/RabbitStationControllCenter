@@ -1,5 +1,5 @@
 import { Search, Globe, RefreshCw, Menu } from 'lucide-react';
-import { formatDateTime, getInitials } from '../../utils/format';
+import { formatDateTime, getInitials, overallStatusLabel } from '../../utils/format';
 import type { SessionUser } from '../../types';
 import { LiveSignalBars } from './LiveSignalBars';
 
@@ -7,6 +7,7 @@ interface ControlCenterHeaderProps {
   user: SessionUser;
   serverTime?: string;
   overallStatus?: string;
+  overallLabel?: string;
   search: string;
   onSearchChange: (v: string) => void;
   onRefresh: () => void;
@@ -17,24 +18,28 @@ interface ControlCenterHeaderProps {
 export function ControlCenterHeader({
   user,
   serverTime,
-  overallStatus = 'ok',
+  overallStatus = 'unknown',
+  overallLabel,
   search,
   onSearchChange,
   onRefresh,
   refreshing,
   onMenuClick,
 }: ControlCenterHeaderProps) {
-  const statusLabel =
-    overallStatus === 'ok' ? 'Operational'
-    : overallStatus === 'warning' ? 'Warnung'
-    : overallStatus === 'unknown' ? 'Unbekannt'
-    : 'Störung';
+  const statusLabel = overallStatusLabel(overallStatus, overallLabel);
 
   const statusColor =
-    overallStatus === 'ok' ? 'text-neon-green'
+    overallLabel === 'partial' ? 'text-amber-300'
+    : overallStatus === 'ok' ? 'text-neon-green'
     : overallStatus === 'warning' ? 'text-neon-orange'
     : overallStatus === 'unknown' ? 'text-slate-400'
     : 'text-neon-red';
+
+  const pulseColor =
+    overallLabel === 'partial' ? 'bg-amber-400'
+    : overallStatus === 'ok' ? 'bg-neon-green'
+    : overallStatus === 'warning' ? 'bg-neon-orange'
+    : 'bg-neon-red';
 
   return (
     <header className="border-b border-white/5 bg-navy-900/50 px-4 py-4 lg:px-6">
@@ -51,7 +56,7 @@ export function ControlCenterHeader({
           <h1 className="text-lg font-semibold text-white lg:text-xl">
             RabbitStation Control Center
           </h1>
-          <p className="text-xs text-slate-500">SaaS-Überwachung & Systemstatus</p>
+          <p className="text-xs text-slate-500">SaaS-Überwachung &amp; Systemstatus</p>
         </div>
 
         <div className="relative hidden w-64 md:block lg:w-80">
@@ -66,24 +71,11 @@ export function ControlCenterHeader({
         </div>
 
         <div className="flex flex-wrap items-center gap-3 text-xs">
-          <div className="hidden items-center gap-2 sm:flex">
-            <span className="text-slate-500">Alle Systeme</span>
-            <span className={`flex items-center gap-1.5 font-medium ${statusColor}`}>
-              <span className="relative flex h-2 w-2">
-                <span
-                  className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-50 ${
-                    overallStatus === 'ok' ? 'bg-neon-green' : overallStatus === 'warning' ? 'bg-neon-orange' : 'bg-neon-red'
-                  }`}
-                />
-                <span
-                  className={`relative h-2 w-2 rounded-full ${
-                    overallStatus === 'ok' ? 'bg-neon-green' : overallStatus === 'warning' ? 'bg-neon-orange' : 'bg-neon-red'
-                  }`}
-                />
-              </span>
-              {statusLabel}
-            </span>
-          </div>
+          <motionlessOverallStatus
+            statusLabel={statusLabel}
+            statusColor={statusColor}
+            pulseColor={pulseColor}
+          />
 
           <div className="hidden items-center gap-1.5 text-slate-400 md:flex">
             <Globe className="h-3.5 w-3.5 text-neon-cyan" />
@@ -118,5 +110,30 @@ export function ControlCenterHeader({
         </div>
       </div>
     </header>
+  );
+}
+
+function motionlessOverallStatus({
+  statusLabel,
+  statusColor,
+  pulseColor,
+}: {
+  statusLabel: string;
+  statusColor: string;
+  pulseColor: string;
+}) {
+  return (
+    <div className="hidden items-center gap-2 sm:flex">
+      <span className="text-slate-500">Alle Systeme</span>
+      <span className={`flex items-center gap-1.5 font-medium ${statusColor}`}>
+        <span className="relative flex h-2 w-2">
+          <span
+            className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-50 ${pulseColor}`}
+          />
+          <span className={`relative h-2 w-2 rounded-full ${pulseColor}`} />
+        </span>
+        {statusLabel}
+      </span>
+    </div>
   );
 }

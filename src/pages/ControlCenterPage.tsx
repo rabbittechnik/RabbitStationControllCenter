@@ -3,8 +3,13 @@ import { api } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import type { ControlCenterMeta, OverviewData } from '../types';
 import { normalizeOverviewData } from '../data/controlCenterDefaults';
-import { ControlCenterSidebar } from '../components/control-center/ControlCenterSidebar';
+import {
+  ControlCenterSidebar,
+  COMING_SOON_SECTIONS,
+  type ControlCenterSection,
+} from '../components/control-center/ControlCenterSidebar';
 import { ControlCenterHeader } from '../components/control-center/ControlCenterHeader';
+import { ComingSoonPanel } from '../components/control-center/ComingSoonPanel';
 import { DataSourceBanner } from '../components/control-center/DataSourceBanner';
 import { SystemStatusCards } from '../components/control-center/SystemStatusCards';
 import { SystemHealthChart } from '../components/control-center/SystemHealthChart';
@@ -16,6 +21,26 @@ import { SystemInfoPanel } from '../components/control-center/SystemInfoPanel';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 
 const AUTO_REFRESH_MS = 45_000;
+
+const SECTION_SCROLL_IDS: Partial<Record<ControlCenterSection, string>> = {
+  system: 'cc-section-system',
+  tenants: 'cc-section-tenants',
+  subscriptions: 'cc-section-subscriptions',
+  logs: 'cc-section-logs',
+  backups: 'cc-section-backups',
+};
+
+const SECTION_LABELS: Record<ControlCenterSection, string> = {
+  overview: 'Übersicht',
+  system: 'Systemstatus',
+  tenants: 'Tenants',
+  subscriptions: 'Abos',
+  logs: 'Logs',
+  backups: 'Backups',
+  security: 'Sicherheit',
+  support: 'Support-Zugriffe',
+  settings: 'Einstellungen',
+};
 
 function metaFromConfigStatus(cfg: {
   apiConfigured: boolean;
@@ -61,8 +86,10 @@ export function ControlCenterPage() {
   const [mobileSidebar, setMobileSidebar] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [logsTenantFilter, setLogsTenantFilter] = useState<string | null>(null);
+  const [activeSection, setActiveSection] = useState<ControlCenterSection>('overview');
 
   const isLive = meta?.source === 'live' && meta.apiConfigured;
+  const showComingSoon = COMING_SOON_SECTIONS.includes(activeSection);
 
   const loadAll = useCallback(async () => {
     setLoadError(null);
@@ -122,6 +149,22 @@ export function ControlCenterPage() {
     return () => window.clearInterval(id);
   }, [loadAll]);
 
+  const handleNavigate = useCallback((section: ControlCenterSection) => {
+    setActiveSection(section);
+    setMobileSidebar(false);
+
+    if (COMING_SOON_SECTIONS.includes(section)) return;
+
+    const scrollId = SECTION_SCROLL_IDS[section];
+    if (scrollId) {
+      requestAnimationFrame(() => {
+        document.getElementById(scrollId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    } else if (section === 'overview') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, []);
+
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
@@ -163,13 +206,19 @@ export function ControlCenterPage() {
     : undefined;
 
   const overallStatus = isLive ? (data?.health?.overallStatus ?? 'unknown') : 'unknown';
+  const overallLabel = isLive ? data?.health?.overallLabel : undefined;
 
   return (
     <div className="flex h-screen overflow-hidden bg-navy-950">
       <div
         className={`${mobileSidebar ? 'fixed inset-y-0 left-0 z-40' : 'hidden'} lg:relative lg:block`}
       >
-        <ControlCenterSidebar collapsed={sidebarCollapsed} />
+        <ControlCenterSidebar
+          collapsed={sidebarCollapsed}
+          activeSection={activeSection}
+          onNavigate={handleNavigate}
+          apiConnected={isLive}
+        />
       </div>
       {mobileSidebar ?
         <button
@@ -184,6 +233,7 @@ export function ControlCenterPage() {
           user={user}
           serverTime={isLive ? data?.systemInfo?.serverTime : undefined}
           overallStatus={overallStatus}
+          overallLabel={overallLabel}
           search={search}
           onSearchChange={setSearch}
           onRefresh={handleRefresh}
@@ -196,65 +246,129 @@ export function ControlCenterPage() {
           : null}
           <DataSourceBanner meta={meta} onRetry={handleRefresh} retrying={refreshing} />
           {loadError ?
-            <div className="mb-4 rounded-lg border border-neon-red/40 bg-neon-red/10 px-4 py-3 text-sm text-red-200">
-              {loadError}
-            </div>
+            <motionlessLoadError message={loadError} />
           : null}
-          <ErrorBoundary compact>
-            <div className="mb-4">
-              <SystemStatusCards
-                health={isLive ? (data?.health ?? null) : null}
+
+          {showComingSoon ?
+            <ComingSoonPanel sectionLabel={SECTION_LABELS[activeSection]} />
+          : <ErrorBoundary compact>
+              <motionlessDashboardContent
+                isLive={isLive}
                 loading={loading}
-                unavailable={!isLive && !loading}
+                data={data}
+                search={search}
+                tenantEmpty={tenantEmpty}
+                filteredLogs={filteredLogs}
+                logsEmpty={logsEmpty}
+                severityFilter={severityFilter}
+                onSeverityFilter={setSeverityFilter}
+                logsTenantFilter={logsTenantFilter}
+                onShowLogs={setLogsTenantFilter}
+                onUpdated={loadAll}
+                onBackupCheck={handleBackupCheck}
+                backupChecking={backupChecking}
               />
-            </div>
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_320px]">
-              <div className="space-y-4">
-                <SubscriptionRevenueCards
-                  data={isLive ? (data?.subscriptions ?? null) : null}
-                  unavailable={!isLive && !loading}
-                  loading={loading && isLive}
-                />
-                <SystemHealthChart
-                  data={isLive ? (data?.charts ?? []) : []}
-                  period="24h"
-                  onPeriodChange={() => undefined}
-                  unavailable={!isLive && !loading}
-                />
-                <TenantSubscriptionManager
-                  tenants={isLive ? (data?.tenants ?? []) : []}
-                  search={search}
-                  disabled={!isLive}
-                  emptyMessage={tenantEmpty}
-                  onUpdated={loadAll}
-                  onShowLogs={(tenantId) => setLogsTenantFilter(tenantId)}
-                />
-              </div>
-              <div className="space-y-4">
-                <LogsAndAlertsPanel
-                  logs={isLive ? filteredLogs : []}
-                  severityFilter={severityFilter}
-                  onSeverityFilter={setSeverityFilter}
-                  emptyMessage={
-                    logsTenantFilter ?
-                      'Keine Logs für diesen Tenant.'
-                    : logsEmpty
-                  }
-                />
-                <BackupSecurityPanel
-                  backups={isLive ? (data?.backups ?? null) : null}
-                  security={isLive ? (data?.security ?? null) : null}
-                  onRunBackupCheck={handleBackupCheck}
-                  checking={backupChecking}
-                  unavailable={!isLive && !loading}
-                />
-                <SystemInfoPanel info={isLive ? (data?.systemInfo ?? null) : null} unavailable={!isLive && !loading} />
-              </div>
-            </div>
-          </ErrorBoundary>
+            </ErrorBoundary>
+          }
         </main>
       </div>
     </div>
   );
 }
 
+function motionlessLoadError({ message }: { message: string }) {
+  return (
+    <div className="mb-4 rounded-lg border border-neon-red/40 bg-neon-red/10 px-4 py-3 text-sm text-red-200">
+      {message}
+    </div>
+  );
+}
+
+function motionlessDashboardContent({
+  isLive,
+  loading,
+  data,
+  search,
+  tenantEmpty,
+  filteredLogs,
+  logsEmpty,
+  severityFilter,
+  onSeverityFilter,
+  logsTenantFilter,
+  onShowLogs,
+  onUpdated,
+  onBackupCheck,
+  backupChecking,
+}: {
+  isLive: boolean;
+  loading: boolean;
+  data: OverviewData | null;
+  search: string;
+  tenantEmpty?: string;
+  filteredLogs: OverviewData['logs'];
+  logsEmpty?: string;
+  severityFilter: string;
+  onSeverityFilter: (s: string) => void;
+  logsTenantFilter: string | null;
+  onShowLogs: (id: string) => void;
+  onUpdated: () => Promise<void>;
+  onBackupCheck: () => void;
+  backupChecking: boolean;
+}) {
+  return (
+    <>
+      <div className="mb-4">
+        <SystemStatusCards
+          health={isLive ? (data?.health ?? null) : null}
+          backups={isLive ? (data?.backups ?? null) : null}
+          loading={loading}
+          unavailable={!isLive && !loading}
+        />
+      </div>
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_320px]">
+        <div className="space-y-4">
+          <SubscriptionRevenueCards
+            data={isLive ? (data?.subscriptions ?? null) : null}
+            unavailable={!isLive && !loading}
+            loading={loading && isLive}
+          />
+          <SystemHealthChart
+            data={isLive ? (data?.charts ?? []) : []}
+            period="24h"
+            onPeriodChange={() => undefined}
+            unavailable={!isLive && !loading}
+          />
+          <TenantSubscriptionManager
+            tenants={isLive ? (data?.tenants ?? []) : []}
+            search={search}
+            disabled={!isLive}
+            emptyMessage={tenantEmpty}
+            onUpdated={onUpdated}
+            onShowLogs={onShowLogs}
+          />
+        </div>
+        <div className="space-y-4">
+          <LogsAndAlertsPanel
+            logs={isLive ? filteredLogs : []}
+            severityFilter={severityFilter}
+            onSeverityFilter={onSeverityFilter}
+            emptyMessage={
+              logsTenantFilter ? 'Keine Logs für diesen Tenant.' : logsEmpty
+            }
+          />
+          <BackupSecurityPanel
+            backups={isLive ? (data?.backups ?? null) : null}
+            security={isLive ? (data?.security ?? null) : null}
+            onRunBackupCheck={onBackupCheck}
+            checking={backupChecking}
+            unavailable={!isLive && !loading}
+          />
+          <SystemInfoPanel
+            info={isLive ? (data?.systemInfo ?? null) : null}
+            unavailable={!isLive && !loading}
+          />
+        </div>
+      </div>
+    </>
+  );
+}

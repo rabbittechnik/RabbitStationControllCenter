@@ -67,20 +67,24 @@ export function normalizeHealthResponse(partial?: Partial<HealthResponse> | null
   );
 
   const mail = mergeComponent(
-    { status: 'unknown' as HealthStatus, deliveryRate: 0 },
+    { status: 'unknown' as HealthStatus, deliveryRate: 0, message: undefined, configured: undefined },
     partial?.mail,
     (c) => ({
       status: parseStatus(c?.status, 'unknown'),
       deliveryRate: safeNumber(c?.deliveryRate, 0),
+      message: typeof c?.message === 'string' ? c.message : partial?.mail?.message,
+      configured: partial?.mail?.configured,
     }),
   );
 
   const payments = mergeComponent(
-    { status: 'unknown' as HealthStatus, openCases: 0 },
+    { status: 'unknown' as HealthStatus, openCases: 0, message: undefined, configured: undefined },
     partial?.payments,
     (c) => ({
       status: parseStatus(c?.status, 'unknown'),
       openCases: safeNumber(c?.openCases, 0),
+      message: typeof c?.message === 'string' ? c.message : partial?.payments?.message,
+      configured: partial?.payments?.configured,
     }),
   );
 
@@ -125,6 +129,7 @@ export function normalizeHealthResponse(partial?: Partial<HealthResponse> | null
 
   return {
     overallStatus: parseStatus(partial?.overallStatus, 'unknown'),
+    overallLabel: partial?.overallLabel,
     checkedAt,
     uptimeLabel: typeof partial?.uptimeLabel === 'string' ? partial.uptimeLabel : undefined,
     app,
@@ -141,7 +146,7 @@ export function normalizeHealthResponse(partial?: Partial<HealthResponse> | null
 }
 
 export function uptimeDisplaySubtitle(partial?: Partial<HealthResponse> | null): string {
-  if (partial?.uptimeLabel) return 'Server-Laufzeit';
+  if (partial?.uptimeLabel) return 'Haupt-App Laufzeit (OS)';
   const c = pickComponent(partial?.uptime);
   if (c?.percent30Days != null && c.percent30Days > 0) return 'Letzte 30 Tage';
   return 'Nicht verfügbar';

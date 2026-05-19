@@ -17,6 +17,6 @@ describe('tenantPlan labels', () => {
 
   it('formats trial days', () => {
     assert.equal(trialDaysLabel(3), '3 Tage');
-    assert.equal(trialDaysLabel(0), '0 Tage');
+    assert.equal(trialDaysLabel(0), 'abgelaufen');
   });
 });

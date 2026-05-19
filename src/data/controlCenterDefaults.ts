@@ -126,6 +126,8 @@ function mergeSystemInfo(partial?: Partial<SystemInfo> | null): SystemInfo {
     databaseVersion: safeText(partial.databaseVersion, defaultSystemInfo.databaseVersion),
     lastDeploy: safeText(partial.lastDeploy, defaultSystemInfo.lastDeploy),
     commitHash: safeText(partial.commitHash, defaultSystemInfo.commitHash),
+    mainApp: partial.mainApp,
+    controlCenter: partial.controlCenter,
   };
 }
 

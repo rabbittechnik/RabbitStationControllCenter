@@ -65,8 +65,9 @@ export function addDaysToIso(dateIso: string | null | undefined, days: number): 
   return base.toISOString().slice(0, 10);
 }
 
-export function trialDaysLabel(days: number | null): string {
+export function trialDaysLabel(days: number | null, status?: string): string {
+  if (status && status !== 'trial') return '–';
   if (days == null) return '–';
-  if (days <= 0) return '0 Tage';
+  if (days <= 0) return 'abgelaufen';
   return `${days} Tage`;
 }

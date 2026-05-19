@@ -1,4 +1,4 @@
-import { AlertTriangle, Info, CheckCircle, XCircle } from 'lucide-react';
+import { AlertTriangle, Info, CheckCircle, XCircle, AlertOctagon } from 'lucide-react';
 import type { SystemLog } from '../../types';
 import { formatTime } from '../../utils/format';
 
@@ -17,6 +17,12 @@ const severityConfig: Record<
     color: 'text-neon-red',
     bg: 'bg-neon-red/10',
     border: 'border-neon-red/20',
+  },
+  critical: {
+    icon: AlertOctagon,
+    color: 'text-red-300',
+    bg: 'bg-red-500/15',
+    border: 'border-red-400/30',
   },
   success: {
     icon: CheckCircle,
@@ -39,12 +45,6 @@ interface LogsAndAlertsPanelProps {
   emptyMessage?: string;
 }
 
-function parseLogTitle(message: string): { title: string; text: string } {
-  const parts = message.split(' – ');
-  if (parts.length >= 2) return { title: parts[0], text: parts.slice(1).join(' – ') };
-  return { title: message.slice(0, 40), text: message };
-}
-
 export function LogsAndAlertsPanel({
   logs,
   severityFilter,
@@ -56,17 +56,11 @@ export function LogsAndAlertsPanel({
     severityFilter === 'all' ? list : list.filter((l) => l.severity === severityFilter);
 
   return (
-    <div className="glass-card flex h-full flex-col p-4">
+    <div id="cc-section-logs" className="glass-card flex h-full flex-col p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-white">Aktuelle Logs & Hinweise</h3>
-        <button
-          type="button"
-          className="rounded border border-white/10 px-2 py-0.5 text-[10px] text-slate-400 hover:text-neon-cyan"
-        >
-          Alle Logs
-        </button>
+        <h3 className="text-sm font-semibold text-white">Aktuelle Logs &amp; Hinweise</h3>
+        <span className="text-[10px] text-slate-500">{list.length} Einträge</span>
       </div>
-
       <select
         value={severityFilter}
         onChange={(e) => onSeverityFilter(e.target.value)}
@@ -77,42 +71,72 @@ export function LogsAndAlertsPanel({
         <option value="error">Fehler</option>
         <option value="success">Erfolg</option>
         <option value="info">Info</option>
+        <option value="critical">Kritisch</option>
       </select>
 
       <ul className="flex-1 space-y-2 overflow-y-auto">
         {filtered.length === 0 ?
           <li className="py-6 text-center text-xs text-slate-500">
-            {emptyMessage ?? 'Keine aktuellen Meldungen.'}
+            {emptyMessage ?? 'Keine aktuellen Systemmeldungen.'}
           </li>
         : null}
-        {filtered.map((log) => {
-          const cfg = severityConfig[log.severity] ?? severityConfig.info;
-          const Icon = cfg.icon;
-          const { title, text } = parseLogTitle(log.message);
-          return (
-            <li
-              key={log.id}
-              className={`rounded-lg border p-2.5 ${cfg.bg} ${cfg.border} transition hover:brightness-110`}
-            >
-              <div className="flex gap-2">
-                <Icon className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${cfg.color}`} />
-                <div className="min-w-0 flex-1">
-                  <p className={`text-xs font-medium ${cfg.color}`}>{title}</p>
-                  <p className="mt-0.5 text-[10px] leading-snug text-slate-500">{text}</p>
-                  <p className="mt-1 text-[10px] text-slate-600">{formatTime(log.created_at)}</p>
-                </div>
-              </div>
-            </li>
-          );
-        })}
+        {filtered.map((log) => (
+          <LogEntry key={log.id} log={log} />
+        ))}
       </ul>
-
-      <button
-        type="button"
-        className="mt-3 text-left text-xs text-neon-cyan hover:underline"
-      >
-        Alle Aktivitäten anzeigen →
-      </button>
     </div>
   );
+}
+
+function LogEntry({ log }: { log: SystemLog }) {
+  const cfg = severityConfig[log.severity] ?? severityConfig.info;
+  const Icon = cfg.icon;
+  const title = log.action_label ?? log.message;
+  const headline = log.headline ?? 'Plattform';
+  const subline = log.subline ?? log.tenant_operator;
+  const userLine = formatUserLine(log);
+
+  return (
+    <li
+      className={`rounded-lg border p-2.5 ${cfg.bg} ${cfg.border} transition hover:brightness-110`}
+      title={
+        log.tenant_id ?
+          `Tenant-ID: ${log.tenant_id}${log.user_id ? ` · User-ID: ${log.user_id}` : ''}`
+        : undefined
+      }
+    >
+      <div className="flex gap-2">
+        <Icon className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${cfg.color}`} />
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold leading-snug text-slate-100">{headline}</p>
+          {subline ?
+            <p className="text-[10px] text-slate-400">{subline}</p>
+          : null}
+          {userLine ?
+            <p className="text-[10px] text-slate-500">{userLine}</p>
+          : null}
+          <p className={`mt-1 text-xs font-medium ${cfg.color}`}>{title}</p>
+          <p className="mt-1 text-[10px] text-slate-600">{formatTime(log.created_at)}</p>
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function formatUserLine(log: SystemLog): string | null {
+  const parts: string[] = [];
+  if (log.user_label && log.user_label !== 'Unbekannter Benutzer') {
+    parts.push(log.user_label);
+  } else if (log.user_name) {
+    parts.push(log.user_name);
+  }
+  if (log.user_email && log.user_email !== log.user_label) {
+    parts.push(log.user_email);
+  }
+  if (log.user_role) {
+    parts.push(log.user_role);
+  }
+  if (parts.length > 0) return parts.join(' · ');
+  if (log.user_id) return 'Unbekannter Benutzer';
+  return null;
 }

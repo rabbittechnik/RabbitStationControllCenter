@@ -9,14 +9,19 @@ interface SubscriptionRevenueCardsProps {
   loading?: boolean;
 }
 
+type CardItem = {
+  title: string;
+  value: string;
+  trend: string;
+  warn?: boolean;
+  highlight?: boolean;
+};
+
 export function SubscriptionRevenueCards({ data, unavailable, loading }: SubscriptionRevenueCardsProps) {
   if (unavailable) {
     return (
-      <div>
-        <div className="mb-3">
-          <h3 className="text-sm font-semibold text-white">Abos &amp; Umsatz</h3>
-          <p className="text-xs text-slate-500">Live-Daten der Haupt-App</p>
-        </div>
+      <div id="cc-section-subscriptions">
+        <SectionHeader />
         <p className="glass-card p-4 text-sm text-slate-500">Noch keine Abo-Daten verfügbar</p>
       </div>
     );
@@ -24,12 +29,7 @@ export function SubscriptionRevenueCards({ data, unavailable, loading }: Subscri
 
   if (!data || loading) {
     return (
-      <div>
-        <div className="mb-3">
-          <h3 className="text-sm font-semibold text-white">Abos &amp; Umsatz</h3>
-        </div>
-        <SkeletonGrid />
-      </div>
+      <motionlessSubscriptionSkeleton />
     );
   }
 
@@ -38,7 +38,7 @@ export function SubscriptionRevenueCards({ data, unavailable, loading }: Subscri
     (data.monthlyRevenueTrend ?? '–')
   : 'Noch keine Zahlungsdaten verfügbar';
 
-  const cards = [
+  const cards: CardItem[] = [
     { title: 'Aktive Tenants', value: String(data.activeTenants ?? 0), trend: data.activeTenantsTrend ?? '–' },
     { title: 'Aktive Testphasen', value: String(data.activeTrials ?? data.trials ?? 0), trend: data.trialsTrend ?? '–' },
     {
@@ -78,38 +78,59 @@ export function SubscriptionRevenueCards({ data, unavailable, loading }: Subscri
   ];
 
   return (
-    <div>
-      <div className="mb-3">
-        <h3 className="text-sm font-semibold text-white">Abos &amp; Umsatz</h3>
-        <p className="text-xs text-slate-500">Live-Daten der Haupt-App</p>
-      </div>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        {cards.map((card, i) => (
-          <motion.div
-            key={card.title}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.04 }}
-            className={`glass-card p-3 ${card.highlight ? 'border-neon-cyan/25' : ''}`}
+    <div id="cc-section-subscriptions">
+      <SectionHeader />
+      <CardsGrid cards={cards} hasRevenue={hasRevenue} />
+    </div>
+  );
+}
+
+function SectionHeader() {
+  return (
+    <div className="mb-3">
+      <h3 className="text-sm font-semibold text-white">Abos &amp; Umsatz</h3>
+      <p className="text-xs text-slate-500">Live-Daten der Haupt-App</p>
+    </div>
+  );
+}
+
+function CardsGrid({ cards, hasRevenue }: { cards: CardItem[]; hasRevenue: boolean }) {
+  return (
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      {cards.map((card, i) => (
+        <motion.div
+          key={card.title}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: i * 0.04 }}
+          className={`glass-card p-3 ${card.highlight ? 'border-neon-cyan/25' : ''}`}
+        >
+          <p className="text-[10px] text-slate-500">{card.title}</p>
+          <p
+            className={`mt-1 text-lg font-semibold ${card.highlight ? 'text-neon-cyan' : 'text-white'}`}
           >
-            <p className="text-[10px] text-slate-500">{card.title}</p>
-            <p
-              className={`mt-1 text-lg font-semibold ${card.highlight ? 'text-neon-cyan' : 'text-white'}`}
-            >
-              {card.value}
-            </p>
-            <p
-              className={`mt-1 text-[10px] leading-tight ${
-                card.warn ? 'text-orange-400'
-                : card.highlight && !hasRevenue ? 'text-slate-500'
-                : 'text-neon-green'
-              }`}
-            >
-              {safeText(card.trend)}
-            </p>
-          </motion.div>
-        ))}
-      </div>
+            {card.value}
+          </p>
+          <p
+            className={`mt-1 text-[10px] leading-tight ${
+              card.warn ? 'text-orange-400'
+              : card.highlight && !hasRevenue ? 'text-slate-500'
+              : 'text-neon-green'
+            }`}
+          >
+            {safeText(card.trend)}
+          </p>
+        </motion.div>
+      ))}
+    </div>
+  );
+}
+
+function motionlessSubscriptionSkeleton() {
+  return (
+    <div id="cc-section-subscriptions">
+      <SectionHeader />
+      <SkeletonGrid />
     </div>
   );
 }
