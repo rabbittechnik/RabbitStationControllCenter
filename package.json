@@ -10,7 +10,7 @@
     "build": "tsc -p tsconfig.server.json && vite build",
     "preview": "vite preview",
     "start": "node dist/server/index.js",
-    "test": "tsx --test src/data/controlCenterDefaults.test.ts"
+    "test": "tsx --test src/data/controlCenterDefaults.test.ts src/utils/tenantPlan.test.ts src/utils/safeDisplay.test.ts server/services/rabbitStationMappers.test.ts server/services/healthNormalize.test.ts"
   },
   "dependencies": {
     "better-sqlite3": "^11.7.0",

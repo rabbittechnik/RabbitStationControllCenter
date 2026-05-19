@@ -9,6 +9,7 @@ import {
   fetchLiveSecurity,
   fetchLiveSubscriptions,
   fetchLiveTenants,
+  patchLiveTenantSubscription,
 } from '../services/controlCenterDataService.js';
 import {
   getConfigStatusDetails,
@@ -130,6 +131,38 @@ router.get('/security/summary', async (_req, res) => {
     const { security } = await fetchLiveSecurity();
     res.json({ ...security, meta: { source: 'live', apiConfigured: true, apiUrlSet: true, tokenSet: true } });
   } catch (e) {
+    handleError(res, e);
+  }
+});
+
+router.patch('/tenants/:tenantId/subscription', async (req, res) => {
+  try {
+    const tenantId = String(req.params.tenantId ?? '');
+    const body = req.body as Record<string, unknown>;
+    await patchLiveTenantSubscription(tenantId, body);
+    res.json({ ok: true, message: 'Plan wurde aktualisiert.' });
+  } catch (e) {
+    if (e instanceof RabbitStationApiError) {
+      if (e.code === 'unauthorized' || e.code === 'forbidden') {
+        return res.status(e.status ?? 403).json({
+          error: 'Keine Berechtigung für Abo-Änderung.',
+          code: e.code,
+          meta: buildErrorMeta(e.message),
+        });
+      }
+      if (
+        e.code === 'timeout' ||
+        e.code === 'network_error' ||
+        e.code === 'not_found' ||
+        e.code === 'server_error'
+      ) {
+        return res.status(502).json({
+          error: 'Haupt-App nicht erreichbar.',
+          code: e.code,
+          meta: buildErrorMeta(e.message),
+        });
+      }
+    }
     handleError(res, e);
   }
 });

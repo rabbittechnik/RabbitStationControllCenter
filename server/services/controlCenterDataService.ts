@@ -1,4 +1,9 @@
-import { getRabbitStationConfig, rabbitStationFetch, RabbitStationApiError } from './rabbitStationApiClient.js';
+import {
+  getRabbitStationConfig,
+  rabbitStationFetch,
+  rabbitStationPatch,
+  RabbitStationApiError,
+} from './rabbitStationApiClient.js';
 import {
   emptyCharts,
   mapBackupStatus,
@@ -73,7 +78,17 @@ export async function fetchLiveSubscriptions() {
     byStatus?: { subscription_status: string; c: number }[];
     expiringTrials?: unknown[];
   }>('/api/admin/subscriptions/summary');
-  return { subscriptions: mapSubscriptionSummary(data) };
+  const { tenants } = await fetchLiveTenants();
+  return { subscriptions: mapSubscriptionSummary(data, tenants) };
+}
+
+export async function patchLiveTenantSubscription(tenantId: string, body: Record<string, unknown>) {
+  const cfg = getRabbitStationConfig();
+  if (!cfg.ready) throw new RabbitStationApiError(cfg.error, 'config_missing');
+  return rabbitStationPatch<{ ok: boolean }>(
+    `/api/admin/tenants/${encodeURIComponent(tenantId)}/subscription`,
+    body,
+  );
 }
 
 export async function fetchLiveLogs(limit = 50) {
@@ -106,13 +121,19 @@ export async function fetchLiveOverview(): Promise<LoadResult> {
     throw new RabbitStationApiError(cfg.error, 'config_missing');
   }
 
-  const [healthBundle, tenantsRes, subsRes, logsRes, securityRes] = await Promise.all([
+  const [healthBundle, tenantsRes, subsRaw, logsRes, securityRes] = await Promise.all([
     fetchLiveHealthBundle(),
     fetchLiveTenants(),
-    fetchLiveSubscriptions(),
+    rabbitStationFetch<{
+      byStatus?: { subscription_status: string; c: number }[];
+      expiringTrials?: unknown[];
+    }>('/api/admin/subscriptions/summary'),
     fetchLiveLogs(30),
     fetchLiveSecurity(),
   ]);
+  const subsRes = {
+    subscriptions: mapSubscriptionSummary(subsRaw, tenantsRes.tenants),
+  };
 
   return {
     meta: {

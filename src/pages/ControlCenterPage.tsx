@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
-import type { ControlCenterMeta, OverviewData, Tenant } from '../types';
+import type { ControlCenterMeta, OverviewData } from '../types';
 import { normalizeOverviewData } from '../data/controlCenterDefaults';
 import { ControlCenterSidebar } from '../components/control-center/ControlCenterSidebar';
 import { ControlCenterHeader } from '../components/control-center/ControlCenterHeader';
@@ -9,11 +9,10 @@ import { DataSourceBanner } from '../components/control-center/DataSourceBanner'
 import { SystemStatusCards } from '../components/control-center/SystemStatusCards';
 import { SystemHealthChart } from '../components/control-center/SystemHealthChart';
 import { LogsAndAlertsPanel } from '../components/control-center/LogsAndAlertsPanel';
-import { TenantOverviewTable } from '../components/control-center/TenantOverviewTable';
 import { SubscriptionRevenueCards } from '../components/control-center/SubscriptionRevenueCards';
+import { TenantSubscriptionManager } from '../components/control-center/TenantSubscriptionManager';
 import { BackupSecurityPanel } from '../components/control-center/BackupSecurityPanel';
 import { SystemInfoPanel } from '../components/control-center/SystemInfoPanel';
-import { SupportAccessModal } from '../components/control-center/SupportAccessModal';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 
 const AUTO_REFRESH_MS = 45_000;
@@ -60,8 +59,8 @@ export function ControlCenterPage() {
   const [severityFilter, setSeverityFilter] = useState('all');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebar, setMobileSidebar] = useState(false);
-  const [supportTenant, setSupportTenant] = useState<Tenant | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [logsTenantFilter, setLogsTenantFilter] = useState<string | null>(null);
 
   const isLive = meta?.source === 'live' && meta.apiConfigured;
 
@@ -146,20 +145,12 @@ export function ControlCenterPage() {
     }
   };
 
-  const handleSupportConfirm = async (reason: string) => {
-    if (!supportTenant || !isLive) return;
-    try {
-      await api.startSupportSession(supportTenant.id, reason);
-      await loadAll();
-    } catch (e) {
-      console.error('[ControlCenter] support session failed', e);
-      setLoadError(e instanceof Error ? e.message : 'Support-Zugang fehlgeschlagen.');
-    } finally {
-      setSupportTenant(null);
-    }
-  };
-
   if (!user) return null;
+
+  const filteredLogs =
+    logsTenantFilter && data?.logs ?
+      data.logs.filter((l) => l.tenant_id === logsTenantFilter)
+    : (data?.logs ?? []);
 
   const tenantEmpty =
     !isLive && !loading ? 'Tenants konnten nicht geladen werden.'
@@ -219,30 +210,36 @@ export function ControlCenterPage() {
             </div>
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_320px]">
               <div className="space-y-4">
+                <SubscriptionRevenueCards
+                  data={isLive ? (data?.subscriptions ?? null) : null}
+                  unavailable={!isLive && !loading}
+                  loading={loading && isLive}
+                />
                 <SystemHealthChart
                   data={isLive ? (data?.charts ?? []) : []}
                   period="24h"
                   onPeriodChange={() => undefined}
                   unavailable={!isLive && !loading}
                 />
-                <TenantOverviewTable
+                <TenantSubscriptionManager
                   tenants={isLive ? (data?.tenants ?? []) : []}
                   search={search}
-                  onSupport={setSupportTenant}
+                  disabled={!isLive}
                   emptyMessage={tenantEmpty}
-                />
-                <SubscriptionRevenueCards
-                  data={isLive ? (data?.subscriptions ?? null) : null}
-                  unavailable={!isLive && !loading}
-                  loading={loading && isLive}
+                  onUpdated={loadAll}
+                  onShowLogs={(tenantId) => setLogsTenantFilter(tenantId)}
                 />
               </div>
               <div className="space-y-4">
                 <LogsAndAlertsPanel
-                  logs={isLive ? (data?.logs ?? []) : []}
+                  logs={isLive ? filteredLogs : []}
                   severityFilter={severityFilter}
                   onSeverityFilter={setSeverityFilter}
-                  emptyMessage={logsEmpty}
+                  emptyMessage={
+                    logsTenantFilter ?
+                      'Keine Logs für diesen Tenant.'
+                    : logsEmpty
+                  }
                 />
                 <BackupSecurityPanel
                   backups={isLive ? (data?.backups ?? null) : null}
@@ -257,12 +254,6 @@ export function ControlCenterPage() {
           </ErrorBoundary>
         </main>
       </div>
-      <SupportAccessModal
-        tenant={supportTenant}
-        open={!!supportTenant}
-        onClose={() => setSupportTenant(null)}
-        onConfirm={handleSupportConfirm}
-      />
     </div>
   );
 }

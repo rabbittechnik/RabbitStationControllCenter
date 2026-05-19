@@ -3,6 +3,8 @@ export type HealthStatus = 'ok' | 'warning' | 'error' | 'unknown';
 export interface HealthResponse {
   overallStatus: HealthStatus;
   checkedAt: string;
+  /** Freitext von der Haupt-App, wenn uptime kein Prozent-Objekt ist */
+  uptimeLabel?: string;
   app: { status: HealthStatus; message: string };
   api: { status: HealthStatus; responseTimeMs: number };
   database: { status: HealthStatus; connections: number };
@@ -37,12 +39,39 @@ export interface SystemLog {
 export interface Tenant {
   id: string;
   name: string;
+  slug?: string;
+  operator?: string;
   status: string;
   plan: string;
   trial_end: string | null;
+  trial_days_left: number | null;
   employees: number;
+  station_count: number;
   last_activity_minutes: number;
   locked: number;
+  current_period_start?: string | null;
+  current_period_end?: string | null;
+  blocked_reason?: string | null;
+}
+
+export type SubscriptionPlanId = 'starter' | 'pro' | 'multi_station';
+
+export type SubscriptionStatusId =
+  | 'trial'
+  | 'active'
+  | 'expired'
+  | 'past_due'
+  | 'cancelled'
+  | 'blocked';
+
+export interface TenantSubscriptionPatch {
+  plan?: SubscriptionPlanId | string;
+  subscription_status?: SubscriptionStatusId | string;
+  trial_end?: string;
+  current_period_start?: string;
+  current_period_end?: string;
+  blocked_reason?: string | null;
+  note?: string;
 }
 
 export interface OverviewData {
@@ -59,10 +88,17 @@ export interface OverviewData {
 export interface SubscriptionSummary {
   activeTenants: number;
   activeTenantsTrend: string;
+  activeTrials: number;
+  trialsExpiringToday: number;
+  expiredTrials: number;
   trials: number;
   trialsTrend: string;
   activeSubscriptions: number;
   activeSubscriptionsTrend: string;
+  starterCustomers: number;
+  proCustomers: number;
+  multiStationCustomers: number;
+  openPayments: number;
   monthlyRevenue: number;
   monthlyRevenueCurrency: string;
   monthlyRevenueTrend: string;

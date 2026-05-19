@@ -53,7 +53,10 @@ export function getConfigStatusDetails() {
 
 type ApiEnvelope<T> = { ok: true; data: T } | { ok: false; error: string; code?: string };
 
-export async function rabbitStationFetch<T>(apiPath: string): Promise<T> {
+async function rabbitStationRequest<T>(
+  apiPath: string,
+  init: { method: string; body?: unknown },
+): Promise<T> {
   const cfg = getRabbitStationConfig();
   if (!cfg.ready) {
     throw new RabbitStationApiError(cfg.error, 'config_missing');
@@ -63,13 +66,19 @@ export async function rabbitStationFetch<T>(apiPath: string): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${cfg.token}`,
+    Accept: 'application/json',
+  };
+  if (init.body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+  }
+
   try {
     const res = await fetch(url, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${cfg.token}`,
-        Accept: 'application/json',
-      },
+      method: init.method,
+      headers,
+      body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
       signal: controller.signal,
     });
 
@@ -124,4 +133,12 @@ export async function rabbitStationFetch<T>(apiPath: string): Promise<T> {
   } finally {
     clearTimeout(timer);
   }
+}
+
+export async function rabbitStationFetch<T>(apiPath: string): Promise<T> {
+  return rabbitStationRequest<T>(apiPath, { method: 'GET' });
+}
+
+export async function rabbitStationPatch<T>(apiPath: string, body: unknown): Promise<T> {
+  return rabbitStationRequest<T>(apiPath, { method: 'PATCH', body });
 }

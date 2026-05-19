@@ -10,6 +10,8 @@ import type {
   SystemLog,
   Tenant,
 } from '../types';
+import { normalizeHealthResponse } from '../utils/healthNormalize';
+import { safeText } from '../utils/safeDisplay';
 
 export const UNKNOWN_STATUS = 'unknown' as HealthStatus;
 
@@ -44,10 +46,17 @@ export const defaultLogs: SystemLog[] = [];
 export const defaultSubscriptions: SubscriptionSummary = {
   activeTenants: 0,
   activeTenantsTrend: 'Noch keine Abo-Daten verfügbar',
+  activeTrials: 0,
+  trialsExpiringToday: 0,
+  expiredTrials: 0,
   trials: 0,
   trialsTrend: '–',
   activeSubscriptions: 0,
   activeSubscriptionsTrend: '–',
+  starterCustomers: 0,
+  proCustomers: 0,
+  multiStationCustomers: 0,
+  openPayments: 0,
   monthlyRevenue: 0,
   monthlyRevenueCurrency: 'EUR',
   monthlyRevenueTrend: 'Noch keine Zahlungsdaten verfügbar',
@@ -100,19 +109,23 @@ export const defaultOverviewData: OverviewData = {
 
 function mergeHealth(partial?: Partial<HealthResponse> | null): HealthResponse {
   if (!partial || typeof partial !== 'object') return defaultHealth;
+  return normalizeHealthResponse(partial);
+}
+
+function mergeSystemInfo(partial?: Partial<SystemInfo> | null): SystemInfo {
+  if (!partial || typeof partial !== 'object') return defaultSystemInfo;
   return {
-    ...defaultHealth,
-    ...partial,
-    app: { ...defaultHealth.app, ...partial.app },
-    api: { ...defaultHealth.api, ...partial.api },
-    database: { ...defaultHealth.database, ...partial.database },
-    mail: { ...defaultHealth.mail, ...partial.mail },
-    payments: { ...defaultHealth.payments, ...partial.payments },
-    backups: { ...defaultHealth.backups, ...partial.backups },
-    storage: { ...defaultHealth.storage, ...partial.storage },
-    uptime: { ...defaultHealth.uptime, ...partial.uptime },
-    warnings: Array.isArray(partial.warnings) ? partial.warnings : [],
-    errors: Array.isArray(partial.errors) ? partial.errors : [],
+    environment: safeText(partial.environment, defaultSystemInfo.environment),
+    region: safeText(partial.region, defaultSystemInfo.region),
+    version: safeText(partial.version, defaultSystemInfo.version),
+    build: safeText(partial.build, defaultSystemInfo.build),
+    serverTime: safeText(partial.serverTime, defaultSystemInfo.serverTime),
+    uptime: safeText(partial.uptime, defaultSystemInfo.uptime),
+    systemLoadPercent: typeof partial.systemLoadPercent === 'number' ? partial.systemLoadPercent : 0,
+    nodeVersion: safeText(partial.nodeVersion, defaultSystemInfo.nodeVersion),
+    databaseVersion: safeText(partial.databaseVersion, defaultSystemInfo.databaseVersion),
+    lastDeploy: safeText(partial.lastDeploy, defaultSystemInfo.lastDeploy),
+    commitHash: safeText(partial.commitHash, defaultSystemInfo.commitHash),
   };
 }
 
@@ -127,7 +140,7 @@ export function normalizeOverviewData(raw: Partial<OverviewData> | null | undefi
     subscriptions: { ...defaultSubscriptions, ...(raw.subscriptions ?? {}) },
     security: { ...defaultSecurity, ...(raw.security ?? {}) },
     backups: { ...defaultBackups, ...(raw.backups ?? {}) },
-    systemInfo: { ...defaultSystemInfo, ...(raw.systemInfo ?? {}) },
+    systemInfo: mergeSystemInfo(raw.systemInfo),
     charts: Array.isArray(raw.charts) ? raw.charts : [],
   };
 }

@@ -2,21 +2,16 @@ import type {
   BackupStatus,
   ChartPoint,
   HealthResponse,
-  HealthStatus,
   SecuritySummary,
   SubscriptionSummary,
   SystemInfo,
   SystemLog,
   Tenant,
 } from '../types.js';
-
-type MainHealth = {
-  ok?: boolean;
-  service?: string;
-  product?: string;
-  timestamp?: string;
-  database?: string;
-};
+import {
+  mapSystemInfoFromHealth,
+  normalizeAdminHealthPayload,
+} from './healthNormalize.js';
 
 type MainTenant = {
   id: string;
@@ -30,6 +25,9 @@ type MainTenant = {
   stationCount?: number;
   userCount?: number;
   contactEmail?: string;
+  currentPeriodStart?: string | null;
+  currentPeriodEnd?: string | null;
+  blockedReason?: string | null;
   created_at?: string;
 };
 
@@ -44,136 +42,100 @@ type MainLog = {
   created_at?: string;
 };
 
-function hs(ok: boolean, warn = false): HealthStatus {
-  if (!ok) return 'error';
-  if (warn) return 'warning';
-  return 'ok';
-}
-
 export function mapHealth(
-  health: MainHealth,
+  health: Record<string, unknown>,
   backups: { configured?: boolean; lastBackup?: string | null; message?: string },
   responseTimeMs: number,
   apiReachable: boolean,
 ): HealthResponse {
-  const checkedAt = health.timestamp ?? new Date().toISOString();
-  if (!apiReachable) {
-    return {
-      overallStatus: 'error',
-      checkedAt,
-      app: { status: 'error', message: 'Haupt-App nicht erreichbar' },
-      api: { status: 'error', responseTimeMs: 0 },
-      database: { status: 'error', connections: 0 },
-      mail: { status: 'warning', deliveryRate: 0 },
-      payments: { status: 'warning', openCases: 0 },
-      backups: {
-        status: 'error',
-        lastBackupAt: checkedAt,
-        nextBackupAt: checkedAt,
-      },
-      storage: { status: 'warning', usedPercent: 0, usedGb: 0, totalGb: 0 },
-      uptime: { status: 'warning', percent30Days: 0 },
-      warnings: [],
-      errors: ['RabbitStation Haupt-App nicht erreichbar'],
-    };
-  }
+  return normalizeAdminHealthPayload(health, backups, responseTimeMs, apiReachable);
+}
 
-  const appOk = health.ok !== false;
-  const dbOk = Boolean(health.database);
-  const backupOk = backups.configured === true;
+function resolveStatus(t: MainTenant): string {
+  const blocked = t.blockedReason != null && String(t.blockedReason).trim() !== '';
+  if (blocked || t.subscriptionStatus === 'blocked') return 'blocked';
+  return t.subscriptionStatus ?? 'unknown';
+}
 
-  const parts: HealthStatus[] = [
-    hs(appOk),
-    hs(appOk),
-    hs(dbOk),
-    'warning',
-    'warning',
-    hs(backupOk, !backupOk),
-    'warning',
-    'warning',
-  ];
-
-  const overallStatus: HealthStatus = parts.includes('error')
-    ? 'error'
-    : parts.includes('warning')
-      ? 'warning'
-      : 'ok';
-
-  return {
-    overallStatus,
-    checkedAt,
-    app: {
-      status: hs(appOk),
-      message: health.product ?? health.service ?? 'RabbitStation Pro',
-    },
-    api: { status: hs(appOk), responseTimeMs },
-    database: {
-      status: hs(dbOk),
-      connections: dbOk ? 1 : 0,
-    },
-    mail: { status: 'warning', deliveryRate: 0 },
-    payments: { status: 'warning', openCases: 0 },
-    backups: {
-      status: hs(backupOk, !backupOk),
-      lastBackupAt: backups.lastBackup ?? checkedAt,
-      nextBackupAt: checkedAt,
-    },
-    storage: { status: 'warning', usedPercent: 0, usedGb: 0, totalGb: 0 },
-    uptime: { status: 'warning', percent30Days: 0 },
-    warnings: [
-      'Mail: Unbekannt',
-      'Zahlungen: Unbekannt',
-      'Speicher: Unbekannt',
-      'Uptime: Unbekannt',
-    ],
-    errors: appOk ? [] : ['Haupt-App meldet Fehlerstatus'],
-  };
+export function normalizePlan(plan?: string): string {
+  const p = (plan ?? '').toLowerCase().replace(/-/g, '_');
+  if (p === 'starter' || p.includes('starter')) return 'starter';
+  if (p === 'multi_station' || p.includes('multi')) return 'multi_station';
+  if (p === 'pro' || p.includes('pro')) return 'pro';
+  if (p.includes('basic')) return 'starter';
+  return plan ?? 'starter';
 }
 
 export function mapTenants(rows: MainTenant[]): Tenant[] {
-  return rows.map((t) => ({
-    id: t.id,
-    name: t.companyName ?? t.slug ?? t.id,
-    status: t.subscriptionStatus ?? 'unknown',
-    plan: normalizePlan(t.plan),
-    trial_end: t.trialEnd ?? null,
-    employees: t.userCount ?? t.stationCount ?? 0,
-    last_activity_minutes: 9999,
-    locked: t.subscriptionStatus === 'blocked' ? 1 : 0,
-  }));
+  return rows.map((t) => {
+    const status = resolveStatus(t);
+    return {
+      id: t.id,
+      name: t.companyName ?? t.slug ?? t.id,
+      slug: t.slug,
+      operator: t.contactEmail ?? undefined,
+      status,
+      plan: normalizePlan(t.plan),
+      trial_end: t.trialEnd ?? null,
+      trial_days_left: t.trialDaysLeft ?? null,
+      employees: t.userCount ?? 0,
+      station_count: t.stationCount ?? 0,
+      last_activity_minutes: 9999,
+      locked: status === 'blocked' ? 1 : 0,
+      current_period_start: t.currentPeriodStart ?? null,
+      current_period_end: t.currentPeriodEnd ?? null,
+      blocked_reason: t.blockedReason ?? null,
+    };
+  });
 }
 
-function normalizePlan(plan?: string): string {
-  const p = (plan ?? '').toLowerCase();
-  if (p.includes('pro')) return 'pro';
-  if (p.includes('basic')) return 'basic';
-  return plan ?? 'pro';
-}
-
-export function mapSubscriptionSummary(data: {
-  byStatus?: { subscription_status: string; c: number }[];
-  expiringTrials?: unknown[];
-}): SubscriptionSummary {
+export function mapSubscriptionSummary(
+  data: {
+    byStatus?: { subscription_status: string; c: number }[];
+    expiringTrials?: unknown[];
+  },
+  tenants: Tenant[] = [],
+): SubscriptionSummary {
   const by = data.byStatus ?? [];
   const count = (status: string) =>
     by.find((r) => r.subscription_status === status)?.c ?? 0;
   const active = count('active');
   const trial = count('trial');
-  const expired = count('expired') + count('cancelled');
+  const expired = count('expired');
   const pastDue = count('past_due');
-  const total = by.reduce((s, r) => s + r.c, 0);
+  const total = by.reduce((s, r) => s + r.c, 0) || tenants.length;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const trialsExpiringToday = tenants.filter(
+    (t) => t.status === 'trial' && t.trial_end?.slice(0, 10) === today,
+  ).length;
+  const expiredTrials = tenants.filter(
+    (t) =>
+      t.status === 'expired' ||
+      (t.status === 'trial' && t.trial_days_left != null && t.trial_days_left <= 0),
+  ).length;
+
+  const starterCustomers = tenants.filter((t) => t.plan === 'starter').length;
+  const proCustomers = tenants.filter((t) => t.plan === 'pro').length;
+  const multiStationCustomers = tenants.filter((t) => t.plan === 'multi_station').length;
 
   return {
     activeTenants: total,
-    activeTenantsTrend: `${total} Mandanten gesamt`,
+    activeTenantsTrend: `${active} aktiv · ${trial} in Testphase`,
+    activeTrials: trial,
+    trialsExpiringToday,
+    expiredTrials: expiredTrials || expired,
     trials: trial,
-    trialsTrend: `${(data.expiringTrials ?? []).length} laufen bald ab`,
+    trialsTrend: `${(data.expiringTrials ?? []).length} laufen in ≤3 Tagen ab`,
     activeSubscriptions: active,
-    activeSubscriptionsTrend: `${expired} abgelaufen`,
+    activeSubscriptionsTrend: `${expired} abgelaufen · ${pastDue} Zahlung offen`,
+    starterCustomers,
+    proCustomers,
+    multiStationCustomers,
+    openPayments: pastDue,
     monthlyRevenue: 0,
     monthlyRevenueCurrency: 'EUR',
-    monthlyRevenueTrend:
-      pastDue > 0 ? `${pastDue} mit offener Zahlung` : 'Noch keine Zahlungsdaten verfügbar',
+    monthlyRevenueTrend: 'Noch keine Zahlungsdaten verfügbar',
   };
 }
 
@@ -246,20 +208,8 @@ export function mapBackupStatus(data: {
   };
 }
 
-export function mapSystemInfo(health: MainHealth): SystemInfo {
-  return {
-    environment: 'Produktion',
-    region: 'Railway',
-    version: health.product ?? 'RabbitStation Pro',
-    build: health.service ?? 'live',
-    serverTime: health.timestamp ?? new Date().toISOString(),
-    uptime: 'Unbekannt',
-    systemLoadPercent: 0,
-    nodeVersion: process.version,
-    databaseVersion: health.database ?? 'Unbekannt',
-    lastDeploy: health.timestamp ?? 'Unbekannt',
-    commitHash: 'live-api',
-  };
+export function mapSystemInfo(health: Record<string, unknown>): SystemInfo {
+  return mapSystemInfoFromHealth(health);
 }
 
 export function emptyCharts(): ChartPoint[] {

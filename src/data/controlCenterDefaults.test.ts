@@ -12,7 +12,20 @@ describe('normalizeOverviewData', () => {
 
   it('keeps valid arrays', () => {
     const out = normalizeOverviewData({
-      tenants: [{ id: 't1', name: 'A', status: 'active', plan: 'pro', trial_end: null, employees: 1, last_activity_minutes: 0, locked: 0 }],
+      tenants: [
+        {
+          id: 't1',
+          name: 'A',
+          status: 'active',
+          plan: 'pro',
+          trial_end: null,
+          trial_days_left: null,
+          employees: 1,
+          station_count: 1,
+          last_activity_minutes: 0,
+          locked: 0,
+        },
+      ],
       logs: [],
     });
     assert.equal(out.tenants.length, 1);

@@ -83,12 +83,19 @@ async function requestSafe<T>(path: string, options?: RequestInit): Promise<ApiR
 
     if (!res.ok) {
       const errBody = body as { error?: string; message?: string; meta?: ControlCenterMeta; code?: string };
-      return fail(
-        errBody.code ?? 'request_failed',
-        errBody.message ?? (typeof errBody.error === 'string' ? errBody.error : undefined) ?? res.statusText ?? 'Anfrage fehlgeschlagen',
-        errBody.meta,
-        errBody.code,
-      );
+      const code =
+        errBody.code ??
+        (res.status === 401 ? 'unauthorized'
+        : res.status === 403 ? 'forbidden'
+        : res.status === 502 ? 'network_error'
+        : 'request_failed');
+      const message =
+        errBody.message ??
+        (typeof errBody.error === 'string' ? errBody.error : undefined) ??
+        (res.status === 502 ? 'Haupt-App nicht erreichbar.' : undefined) ??
+        res.statusText ??
+        'Anfrage fehlgeschlagen';
+      return fail(code, message, errBody.meta, code);
     }
 
     return { ok: true, data: body as T };
@@ -163,4 +170,13 @@ export const api = {
 
   logControlCenterOpen: () =>
     request<{ ok: boolean }>('/admin/audit/control-center-opened', { method: 'POST' }),
+
+  patchTenantSubscription: (tenantId: string, body: import('../types').TenantSubscriptionPatch) =>
+    requestSafe<{ ok: boolean; message?: string }>(
+      `/control-center/tenants/${encodeURIComponent(tenantId)}/subscription`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      },
+    ),
 };

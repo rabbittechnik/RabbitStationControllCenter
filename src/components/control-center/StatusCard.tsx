@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import type { LucideIcon } from 'lucide-react';
+import { safeText } from '../../utils/safeDisplay';
 import { MiniSparkline } from './MiniSparkline';
 
 export type StatusVariant = 'ok' | 'warning' | 'error' | 'cyan' | 'neutral';
@@ -40,8 +41,8 @@ const variantStyles: Record<
 
 interface StatusCardProps {
   title: string;
-  value: string;
-  subtitle: string;
+  value: string | number;
+  subtitle: string | number;
   icon: LucideIcon;
   variant?: StatusVariant;
   showPulse?: boolean;
@@ -64,6 +65,8 @@ export function StatusCard({
   index = 0,
 }: StatusCardProps) {
   const styles = variantStyles[variant];
+  const valueText = safeText(value);
+  const subtitleText = safeText(subtitle);
 
   return (
     <motion.div
@@ -88,9 +91,9 @@ export function StatusCard({
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-neon-green" />
               </span>
             )}
-            {value}
+            {valueText}
           </div>
-          <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>
+          <p className="mt-0.5 text-xs text-slate-500">{subtitleText}</p>
         </div>
 
         {ringPercent !== undefined && (

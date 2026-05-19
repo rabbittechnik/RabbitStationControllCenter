@@ -22,6 +22,7 @@ export type HealthStatus = 'ok' | 'warning' | 'error';
 export interface HealthResponse {
   overallStatus: HealthStatus;
   checkedAt: string;
+  uptimeLabel?: string;
   app: { status: HealthStatus; message: string };
   api: { status: HealthStatus; responseTimeMs: number };
   database: { status: HealthStatus; connections: number };
@@ -56,21 +57,35 @@ export interface SystemLog {
 export interface Tenant {
   id: string;
   name: string;
+  slug?: string;
+  operator?: string;
   status: string;
   plan: string;
   trial_end: string | null;
+  trial_days_left: number | null;
   employees: number;
+  station_count: number;
   last_activity_minutes: number;
   locked: number;
+  current_period_start?: string | null;
+  current_period_end?: string | null;
+  blocked_reason?: string | null;
 }
 
 export interface SubscriptionSummary {
   activeTenants: number;
   activeTenantsTrend: string;
+  activeTrials: number;
+  trialsExpiringToday: number;
+  expiredTrials: number;
   trials: number;
   trialsTrend: string;
   activeSubscriptions: number;
   activeSubscriptionsTrend: string;
+  starterCustomers: number;
+  proCustomers: number;
+  multiStationCustomers: number;
+  openPayments: number;
   monthlyRevenue: number;
   monthlyRevenueCurrency: string;
   monthlyRevenueTrend: string;

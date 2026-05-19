@@ -1,6 +1,7 @@
 import { MiniSparkline } from './MiniSparkline';
 import type { SystemInfo } from '../../types';
 import { formatDateTime } from '../../utils/format';
+import { safeText } from '../../utils/safeDisplay';
 
 interface SystemInfoPanelProps {
   info: SystemInfo | null;
@@ -43,7 +44,7 @@ export function SystemInfoPanel({ info, unavailable }: SystemInfoPanelProps) {
           <div key={row.label} className="flex items-center justify-between gap-2">
             <dt className="text-slate-500">{row.label}</dt>
             <dd className="flex items-center gap-2 text-right text-slate-300">
-              {row.value}
+              {safeText(row.value)}
               {row.sparkline && <MiniSparkline color="#00e676" data={[3, 5, 4, 6, 5, 7, 6]} />}
             </dd>
           </div>

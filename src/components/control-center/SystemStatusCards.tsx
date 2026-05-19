@@ -10,7 +10,9 @@ import {
 } from 'lucide-react';
 import { StatusCard } from './StatusCard';
 import type { HealthResponse, HealthStatus } from '../../types';
+import { uptimeDisplaySubtitle, uptimeDisplayValue } from '../../utils/healthNormalize';
 import { formatTime } from '../../utils/format';
+import { safeText } from '../../utils/safeDisplay';
 
 interface SystemStatusCardsProps {
   health: HealthResponse | null;
@@ -82,7 +84,7 @@ export function SystemStatusCards({ health, loading, unavailable }: SystemStatus
       subtitle:
         mail?.deliveryRate != null && mail.deliveryRate > 0 ?
           `Zustellung ${mail.deliveryRate.toLocaleString('de-DE')} %`
-        : 'Nicht verfügbar',
+        : safeText((mail as { message?: string } | undefined)?.message, 'Nicht verfügbar'),
       icon: Mail,
       variant: statusVariant(mail?.status),
     },
@@ -90,9 +92,9 @@ export function SystemStatusCards({ health, loading, unavailable }: SystemStatus
       title: 'Zahlungen',
       value: payments?.status === 'warning' ? 'Warnung' : statusLabel(payments?.status, 'OK', 'Fehler'),
       subtitle:
-        payments?.openCases != null ?
+        payments?.openCases != null && payments.openCases > 0 ?
           `${payments.openCases} offene Fälle`
-        : 'Nicht verfügbar',
+        : safeText((payments as { message?: string } | undefined)?.message, 'Nicht verfügbar'),
       icon: CreditCard,
       variant: statusVariant(payments?.status),
     },
@@ -123,11 +125,8 @@ export function SystemStatusCards({ health, loading, unavailable }: SystemStatus
     },
     {
       title: 'Uptime',
-      value:
-        uptime?.percent30Days != null && uptime.percent30Days > 0 ?
-          `${uptime.percent30Days} %`
-        : 'Nicht verfügbar',
-      subtitle: uptime?.percent30Days != null && uptime.percent30Days > 0 ? 'Letzte 30 Tage' : 'Nicht verfügbar',
+      value: uptimeDisplayValue(health),
+      subtitle: uptimeDisplaySubtitle(health),
       icon: Clock,
       variant: 'ok' as const,
       barData: [40, 65, 55, 80, 70, 90, 75, 85],
