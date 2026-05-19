@@ -18,7 +18,7 @@ Der aktuelle Code nutzte bereits `resolveClientDist()` → `../client` (= `dist/
 |-------|----------|
 | `server/index.ts` | `GET /health`, explizites `GET /`, SPA-Fallback gehärtet, JSON-404 für unbekannte `/api/*`-Pfade |
 | `railway.toml` | `buildCommand = "npm run build"` (kein zweites `npm ci`) |
-| `railpack.json` | Install: `npm ci --include=dev` (Vite/TypeScript für Build) |
+| `railpack.json` | Install: `package.json` + `package-lock.json` kopieren, dann `npm ci --include=dev` |
 | `.env.example` | Hinweis auf Deploy-Checks für `/` und `/health` |
 
 ## Routen nach Deploy
