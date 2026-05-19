@@ -6,6 +6,7 @@ interface BackupSecurityPanelProps {
   security: SecuritySummary | null;
   onRunBackupCheck: () => void;
   checking?: boolean;
+  unavailable?: boolean;
 }
 
 export function BackupSecurityPanel({
@@ -13,7 +14,17 @@ export function BackupSecurityPanel({
   security,
   onRunBackupCheck,
   checking,
+  unavailable,
 }: BackupSecurityPanelProps) {
+  if (unavailable) {
+    return (
+      <div className="glass-card p-4">
+        <h3 className="mb-2 text-sm font-semibold text-white">Backups &amp; Sicherheit</h3>
+        <p className="text-xs text-slate-500">Keine Sicherheitsdaten verfügbar</p>
+      </div>
+    );
+  }
+
   return (
     <div className="glass-card p-4">
       <h3 className="mb-3 text-sm font-semibold text-white">Backups & Sicherheit</h3>

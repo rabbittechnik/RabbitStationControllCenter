@@ -46,9 +46,10 @@ export function TenantOverviewTable({
   onSupport,
   emptyMessage,
 }: TenantOverviewTableProps) {
+  const list = Array.isArray(tenants) ? tenants : [];
   const filtered = search
-    ? tenants.filter((t) => t.name.toLowerCase().includes(search.toLowerCase()))
-    : tenants;
+    ? list.filter((t) => t.name.toLowerCase().includes(search.toLowerCase()))
+    : list;
 
   return (
     <div className="glass-card overflow-hidden p-4">
@@ -115,7 +116,7 @@ export function TenantOverviewTable({
                   <TenantActionMenu
                     tenant={tenant}
                     onSupport={onSupport}
-                    onDetails={(t) => alert(`Details: ${t.name} (Demo)`)}
+                    onDetails={(t) => alert(`Details: ${t.name}`)}
                   />
                 </td>
               </tr>

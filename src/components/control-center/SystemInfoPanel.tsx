@@ -4,9 +4,18 @@ import { formatDateTime } from '../../utils/format';
 
 interface SystemInfoPanelProps {
   info: SystemInfo | null;
+  unavailable?: boolean;
 }
 
-export function SystemInfoPanel({ info }: SystemInfoPanelProps) {
+export function SystemInfoPanel({ info, unavailable }: SystemInfoPanelProps) {
+  if (unavailable) {
+    return (
+      <div className="glass-card p-4">
+        <h3 className="mb-2 text-sm font-semibold text-white">Systeminformationen</h3>
+        <p className="text-xs text-slate-500">Status nicht verfügbar</p>
+      </div>
+    );
+  }
   if (!info) return <div className="glass-card h-48 animate-pulse p-4" />;
 
   const rows = [

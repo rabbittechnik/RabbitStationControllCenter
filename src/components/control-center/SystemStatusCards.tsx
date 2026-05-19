@@ -9,85 +9,125 @@ import {
   Clock,
 } from 'lucide-react';
 import { StatusCard } from './StatusCard';
-import type { HealthResponse } from '../../types';
+import type { HealthResponse, HealthStatus } from '../../types';
 import { formatTime } from '../../utils/format';
 
 interface SystemStatusCardsProps {
   health: HealthResponse | null;
   loading?: boolean;
+  unavailable?: boolean;
 }
 
-export function SystemStatusCards({ health, loading }: SystemStatusCardsProps) {
+function statusLabel(status: HealthStatus | undefined, ok: string, bad: string): string {
+  if (status === 'ok') return ok;
+  if (status === 'unknown') return 'Nicht verfügbar';
+  return bad;
+}
+
+function statusVariant(status: HealthStatus | undefined): 'ok' | 'warning' | 'error' {
+  if (status === 'ok') return 'ok';
+  if (status === 'warning') return 'warning';
+  if (status === 'unknown') return 'warning';
+  return 'error';
+}
+
+export function SystemStatusCards({ health, loading, unavailable }: SystemStatusCardsProps) {
   if (loading || !health) {
     return (
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4 2xl:grid-cols-8">
-        {Array.from({ length: 8 }).map((_, i) => (
-          <div key={i} className="glass-card h-24 animate-pulse p-4" />
-        ))}
-      </div>
+      <StatusCardsSkeleton unavailable={unavailable} loading={loading} />
     );
   }
+
+  const app = health.app;
+  const api = health.api;
+  const database = health.database;
+  const mail = health.mail;
+  const payments = health.payments;
+  const backups = health.backups;
+  const storage = health.storage;
+  const uptime = health.uptime;
 
   const cards = [
     {
       title: 'App Online',
-      value: health.app.status === 'ok' ? 'Online' : 'Offline',
-      subtitle: health.app.message,
+      value: statusLabel(app?.status, 'Online', 'Offline'),
+      subtitle: app?.message ?? 'Nicht verfügbar',
       icon: CheckCircle2,
-      variant: health.app.status === 'ok' ? ('ok' as const) : ('error' as const),
-      showPulse: true,
+      variant: statusVariant(app?.status),
+      showPulse: app?.status === 'ok',
     },
     {
       title: 'API',
-      value: health.api.status === 'ok' ? 'OK' : 'Fehler',
-      subtitle: `Antwortzeit ${health.api.responseTimeMs} ms`,
+      value: statusLabel(api?.status, 'OK', 'Fehler'),
+      subtitle:
+        api?.responseTimeMs != null && api.responseTimeMs > 0 ?
+          `Antwortzeit ${api.responseTimeMs} ms`
+        : 'Nicht verfügbar',
       icon: Code2,
-      variant: health.api.status === 'ok' ? ('ok' as const) : ('error' as const),
+      variant: statusVariant(api?.status),
     },
     {
       title: 'Datenbank',
-      value: health.database.status === 'ok' ? 'OK' : 'Fehler',
-      subtitle: `Verbindungen ${health.database.connections}`,
+      value: statusLabel(database?.status, 'OK', 'Fehler'),
+      subtitle:
+        database?.connections != null ?
+          `Verbindungen ${database.connections}`
+        : 'Nicht verfügbar',
       icon: Database,
-      variant: health.database.status === 'ok' ? ('ok' as const) : ('error' as const),
+      variant: statusVariant(database?.status),
     },
     {
       title: 'Mail',
-      value: health.mail.status === 'ok' ? 'OK' : 'Unbekannt',
+      value: statusLabel(mail?.status, 'OK', 'Unbekannt'),
       subtitle:
-        health.mail.deliveryRate > 0 ?
-          `Zustellung ${health.mail.deliveryRate.toLocaleString('de-DE')} %`
-        : 'Unbekannt',
+        mail?.deliveryRate != null && mail.deliveryRate > 0 ?
+          `Zustellung ${mail.deliveryRate.toLocaleString('de-DE')} %`
+        : 'Nicht verfügbar',
       icon: Mail,
-      variant: health.mail.status === 'ok' ? ('ok' as const) : ('warning' as const),
+      variant: statusVariant(mail?.status),
     },
     {
       title: 'Zahlungen',
-      value: health.payments.status === 'warning' ? 'Warnung' : 'OK',
-      subtitle: `${health.payments.openCases} offene Fälle`,
+      value: payments?.status === 'warning' ? 'Warnung' : statusLabel(payments?.status, 'OK', 'Fehler'),
+      subtitle:
+        payments?.openCases != null ?
+          `${payments.openCases} offene Fälle`
+        : 'Nicht verfügbar',
       icon: CreditCard,
-      variant: health.payments.status === 'ok' ? ('ok' as const) : ('warning' as const),
+      variant: statusVariant(payments?.status),
     },
     {
       title: 'Backups',
-      value: health.backups.status === 'ok' ? 'OK' : 'Fehler',
-      subtitle: `Letztes: ${formatTime(health.backups.lastBackupAt)}`,
+      value: statusLabel(backups?.status, 'OK', 'Fehler'),
+      subtitle:
+        backups?.lastBackupAt ?
+          `Letztes: ${formatTime(backups.lastBackupAt)}`
+        : 'Backup-System nicht konfiguriert',
       icon: Cloud,
-      variant: health.backups.status === 'ok' ? ('ok' as const) : ('error' as const),
+      variant: statusVariant(backups?.status),
     },
     {
       title: 'Speicher',
-      value: `${health.storage.usedPercent} %`,
-      subtitle: `${health.storage.usedGb} GB / ${health.storage.totalGb} GB`,
+      value:
+        storage?.usedPercent != null && storage.usedPercent > 0 ?
+          `${storage.usedPercent} %`
+        : 'Nicht verfügbar',
+      subtitle:
+        storage?.usedGb != null && storage?.totalGb != null ?
+          `${storage.usedGb} GB / ${storage.totalGb} GB`
+        : 'Nicht verfügbar',
       icon: HardDrive,
       variant: 'cyan' as const,
-      ringPercent: health.storage.usedPercent,
+      ringPercent: storage?.usedPercent ?? 0,
       showSparkline: false,
     },
     {
       title: 'Uptime',
-      value: health.uptime.percent30Days > 0 ? `${health.uptime.percent30Days} %` : 'Unbekannt',
-      subtitle: health.uptime.percent30Days > 0 ? 'Letzte 30 Tage' : 'Unbekannt',
+      value:
+        uptime?.percent30Days != null && uptime.percent30Days > 0 ?
+          `${uptime.percent30Days} %`
+        : 'Nicht verfügbar',
+      subtitle: uptime?.percent30Days != null && uptime.percent30Days > 0 ? 'Letzte 30 Tage' : 'Nicht verfügbar',
       icon: Clock,
       variant: 'ok' as const,
       barData: [40, 65, 55, 80, 70, 90, 75, 85],
@@ -99,6 +139,29 @@ export function SystemStatusCards({ health, loading }: SystemStatusCardsProps) {
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4 2xl:grid-cols-8">
       {cards.map((card, i) => (
         <StatusCard key={card.title} {...card} index={i} />
+      ))}
+    </div>
+  );
+}
+
+function StatusCardsSkeleton({
+  unavailable,
+  loading,
+}: {
+  unavailable?: boolean;
+  loading?: boolean;
+}) {
+  if (unavailable && !loading) {
+    return (
+      <p className="glass-card p-4 text-sm text-slate-500">
+        Systemstatus: Nicht verfügbar — Haupt-App nicht verbunden.
+      </p>
+    );
+  }
+  return (
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4 2xl:grid-cols-8">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <div key={i} className="glass-card h-24 animate-pulse p-4" />
       ))}
     </div>
   );

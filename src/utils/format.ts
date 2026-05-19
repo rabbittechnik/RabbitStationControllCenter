@@ -1,5 +1,7 @@
-export function formatDateTime(iso: string): string {
+export function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return '–';
   const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '–';
   const date = d.toLocaleDateString('de-DE', {
     day: '2-digit',
     month: '2-digit',
@@ -13,8 +15,11 @@ export function formatDateTime(iso: string): string {
   return `${date} · ${time}`;
 }
 
-export function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('de-DE', {
+export function formatTime(iso: string | null | undefined): string {
+  if (!iso) return '–';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '–';
+  return d.toLocaleTimeString('de-DE', {
     hour: '2-digit',
     minute: '2-digit',
   });

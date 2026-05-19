@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ApiRequestError, api } from '../api/client';
+import { api } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import type { ControlCenterMeta, OverviewData, Tenant } from '../types';
+import { normalizeOverviewData } from '../data/controlCenterDefaults';
 import { ControlCenterSidebar } from '../components/control-center/ControlCenterSidebar';
 import { ControlCenterHeader } from '../components/control-center/ControlCenterHeader';
 import { DataSourceBanner } from '../components/control-center/DataSourceBanner';
@@ -13,6 +14,7 @@ import { SubscriptionRevenueCards } from '../components/control-center/Subscript
 import { BackupSecurityPanel } from '../components/control-center/BackupSecurityPanel';
 import { SystemInfoPanel } from '../components/control-center/SystemInfoPanel';
 import { SupportAccessModal } from '../components/control-center/SupportAccessModal';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 
 const AUTO_REFRESH_MS = 45_000;
 
@@ -29,6 +31,21 @@ function metaFromConfigStatus(cfg: {
     tokenSet: cfg.tokenSet,
     message: cfg.error ?? undefined,
     lastError: cfg.error ?? undefined,
+  };
+}
+
+function metaFromApiFail(
+  cfg: { apiUrlSet: boolean; tokenSet: boolean },
+  message: string,
+  code?: string,
+): ControlCenterMeta {
+  return {
+    source: 'error',
+    apiConfigured: true,
+    apiUrlSet: cfg.apiUrlSet,
+    tokenSet: cfg.tokenSet,
+    message: 'Haupt-App nicht verbunden',
+    lastError: code ? `${message} (${code})` : message,
   };
 }
 
@@ -50,40 +67,49 @@ export function ControlCenterPage() {
 
   const loadAll = useCallback(async () => {
     setLoadError(null);
-    const cfg = await api.getConfigStatus();
+
+    const cfgResult = await api.getConfigStatus();
+    if (!cfgResult.ok) {
+      setMeta({
+        source: 'error',
+        apiConfigured: false,
+        apiUrlSet: false,
+        tokenSet: false,
+        message: cfgResult.message,
+        lastError: cfgResult.message,
+      });
+      setData(null);
+      return;
+    }
+
+    const cfg = cfgResult.data;
     if (!cfg.apiConfigured) {
       setMeta(metaFromConfigStatus(cfg));
       setData(null);
       return;
     }
 
-    try {
-      const overview = await api.getOverview();
-      const { meta: m, ...rest } = overview;
-      setMeta(m);
-      setData(rest);
-    } catch (e) {
-      if (e instanceof ApiRequestError && e.meta) {
-        setMeta(e.meta);
-      } else {
-        setMeta({
-          source: 'error',
-          apiConfigured: true,
-          apiUrlSet: cfg.apiUrlSet,
-          tokenSet: cfg.tokenSet,
-          message: 'RabbitStation Haupt-App ist nicht verbunden.',
-          lastError: e instanceof Error ? e.message : 'Unbekannter Fehler',
-        });
-      }
+    const overviewResult = await api.getOverview();
+    if (!overviewResult.ok) {
+      setMeta(metaFromApiFail(cfg, overviewResult.message, overviewResult.error));
       setData(null);
-      setLoadError(e instanceof Error ? e.message : 'Daten konnten nicht geladen werden.');
+      setLoadError(overviewResult.message);
+      return;
     }
+
+    const overview = overviewResult.data;
+    const { meta: m, ...rest } = overview;
+    setMeta(m ?? metaFromConfigStatus({ ...cfg, apiConfigured: true, error: null }));
+    setData(normalizeOverviewData(rest));
   }, []);
 
   useEffect(() => {
     void (async () => {
       try {
         await loadAll();
+      } catch (e) {
+        console.error('[ControlCenter] load failed', e);
+        setLoadError(e instanceof Error ? e.message : 'Daten konnten nicht geladen werden.');
       } finally {
         setLoading(false);
       }
@@ -92,7 +118,7 @@ export function ControlCenterPage() {
 
   useEffect(() => {
     const id = window.setInterval(() => {
-      void loadAll().catch(() => undefined);
+      void loadAll().catch((e) => console.warn('[ControlCenter] refresh failed', e));
     }, AUTO_REFRESH_MS);
     return () => window.clearInterval(id);
   }, [loadAll]);
@@ -113,6 +139,7 @@ export function ControlCenterPage() {
       const backups = await api.runBackupCheck();
       setData((prev) => (prev ? { ...prev, backups } : prev));
     } catch (e) {
+      console.error('[ControlCenter] backup check failed', e);
       setLoadError(e instanceof Error ? e.message : 'Backup-Status konnte nicht geladen werden.');
     } finally {
       setBackupChecking(false);
@@ -121,17 +148,30 @@ export function ControlCenterPage() {
 
   const handleSupportConfirm = async (reason: string) => {
     if (!supportTenant || !isLive) return;
-    await api.startSupportSession(supportTenant.id, reason);
-    await loadAll();
-    setSupportTenant(null);
+    try {
+      await api.startSupportSession(supportTenant.id, reason);
+      await loadAll();
+    } catch (e) {
+      console.error('[ControlCenter] support session failed', e);
+      setLoadError(e instanceof Error ? e.message : 'Support-Zugang fehlgeschlagen.');
+    } finally {
+      setSupportTenant(null);
+    }
   };
 
   if (!user) return null;
 
   const tenantEmpty =
-    !isLive ? 'Tenants konnten nicht geladen werden.'
-    : (data?.tenants?.length ?? 0) === 0 ? 'Keine Tenants gefunden.'
+    !isLive && !loading ? 'Tenants konnten nicht geladen werden.'
+    : isLive && (data?.tenants?.length ?? 0) === 0 ? 'Keine Tenants gefunden.'
     : undefined;
+
+  const logsEmpty =
+    !isLive && !loading ? 'Logs konnten nicht geladen werden.'
+    : isLive && (data?.logs?.length ?? 0) === 0 ? 'Keine aktuellen Systemmeldungen.'
+    : undefined;
+
+  const overallStatus = isLive ? (data?.health?.overallStatus ?? 'unknown') : 'unknown';
 
   return (
     <div className="flex h-screen overflow-hidden bg-navy-950">
@@ -145,13 +185,14 @@ export function ControlCenterPage() {
           type="button"
           className="fixed inset-0 z-30 bg-black/50 lg:hidden"
           onClick={() => setMobileSidebar(false)}
+          aria-label="Menü schließen"
         />
       : null}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <ControlCenterHeader
           user={user}
-          serverTime={isLive ? data?.systemInfo.serverTime : undefined}
-          overallStatus={isLive ? data?.health.overallStatus : undefined}
+          serverTime={isLive ? data?.systemInfo?.serverTime : undefined}
+          overallStatus={overallStatus}
           search={search}
           onSearchChange={setSearch}
           onRefresh={handleRefresh}
@@ -159,53 +200,61 @@ export function ControlCenterPage() {
           onMenuClick={() => setMobileSidebar(true)}
         />
         <main className="flex-1 overflow-y-auto p-4 lg:p-6">
+          {loading ?
+            <p className="mb-4 text-sm text-slate-400">Control-Center-Daten werden geladen…</p>
+          : null}
           <DataSourceBanner meta={meta} onRetry={handleRefresh} retrying={refreshing} />
           {loadError ?
             <div className="mb-4 rounded-lg border border-neon-red/40 bg-neon-red/10 px-4 py-3 text-sm text-red-200">
               {loadError}
             </div>
           : null}
-          <div className="mb-4">
-            <SystemStatusCards health={isLive ? (data?.health ?? null) : null} loading={loading} />
-          </div>
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_320px]">
-            <div className="space-y-4">
-              {isLive && (data?.charts?.length ?? 0) > 0 ?
-                <SystemHealthChart
-                  data={data!.charts}
-                  period="24h"
-                  onPeriodChange={() => undefined}
-                />
-              : !isLive && !loading ?
-                <p className="glass-card p-4 text-sm text-slate-500">Systemgesundheit: Nicht verfügbar</p>
-              : null}
-              <TenantOverviewTable
-                tenants={isLive ? (data?.tenants ?? []) : []}
-                search={search}
-                onSupport={setSupportTenant}
-                emptyMessage={tenantEmpty}
-              />
-              <SubscriptionRevenueCards
-                data={isLive ? (data?.subscriptions ?? null) : null}
+          <ErrorBoundary compact>
+            <div className="mb-4">
+              <SystemStatusCards
+                health={isLive ? (data?.health ?? null) : null}
+                loading={loading}
                 unavailable={!isLive && !loading}
               />
             </div>
-            <div className="space-y-4">
-              <LogsAndAlertsPanel
-                logs={isLive ? (data?.logs ?? []) : []}
-                severityFilter={severityFilter}
-                onSeverityFilter={setSeverityFilter}
-                emptyMessage={logsEmpty}
-              />
-              <BackupSecurityPanel
-                backups={isLive ? (data?.backups ?? null) : null}
-                security={isLive ? (data?.security ?? null) : null}
-                onRunBackupCheck={handleBackupCheck}
-                checking={backupChecking}
-              />
-              <SystemInfoPanel info={isLive ? (data?.systemInfo ?? null) : null} />
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_320px]">
+              <div className="space-y-4">
+                <SystemHealthChart
+                  data={isLive ? (data?.charts ?? []) : []}
+                  period="24h"
+                  onPeriodChange={() => undefined}
+                  unavailable={!isLive && !loading}
+                />
+                <TenantOverviewTable
+                  tenants={isLive ? (data?.tenants ?? []) : []}
+                  search={search}
+                  onSupport={setSupportTenant}
+                  emptyMessage={tenantEmpty}
+                />
+                <SubscriptionRevenueCards
+                  data={isLive ? (data?.subscriptions ?? null) : null}
+                  unavailable={!isLive && !loading}
+                  loading={loading && isLive}
+                />
+              </div>
+              <div className="space-y-4">
+                <LogsAndAlertsPanel
+                  logs={isLive ? (data?.logs ?? []) : []}
+                  severityFilter={severityFilter}
+                  onSeverityFilter={setSeverityFilter}
+                  emptyMessage={logsEmpty}
+                />
+                <BackupSecurityPanel
+                  backups={isLive ? (data?.backups ?? null) : null}
+                  security={isLive ? (data?.security ?? null) : null}
+                  onRunBackupCheck={handleBackupCheck}
+                  checking={backupChecking}
+                  unavailable={!isLive && !loading}
+                />
+                <SystemInfoPanel info={isLive ? (data?.systemInfo ?? null) : null} unavailable={!isLive && !loading} />
+              </div>
             </div>
-          </div>
+          </ErrorBoundary>
         </main>
       </div>
       <SupportAccessModal
@@ -217,3 +266,4 @@ export function ControlCenterPage() {
     </div>
   );
 }
+

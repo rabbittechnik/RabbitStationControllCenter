@@ -1,4 +1,4 @@
-export type HealthStatus = 'ok' | 'warning' | 'error';
+export type HealthStatus = 'ok' | 'warning' | 'error' | 'unknown';
 
 export interface HealthResponse {
   overallStatus: HealthStatus;

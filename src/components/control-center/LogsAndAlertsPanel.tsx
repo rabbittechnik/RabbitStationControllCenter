@@ -51,8 +51,9 @@ export function LogsAndAlertsPanel({
   onSeverityFilter,
   emptyMessage,
 }: LogsAndAlertsPanelProps) {
+  const list = Array.isArray(logs) ? logs : [];
   const filtered =
-    severityFilter === 'all' ? logs : logs.filter((l) => l.severity === severityFilter);
+    severityFilter === 'all' ? list : list.filter((l) => l.severity === severityFilter);
 
   return (
     <div className="glass-card flex h-full flex-col p-4">

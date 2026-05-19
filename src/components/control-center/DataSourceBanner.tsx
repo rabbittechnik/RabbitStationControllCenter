@@ -26,8 +26,9 @@ export function DataSourceBanner({ meta, onRetry, retrying }: DataSourceBannerPr
 
   const body =
     !meta.apiConfigured ?
-      'Das Control Center kann keine echten Daten laden. Bitte prüfen Sie die Railway-Variablen RABBITSTATION_API_URL und CONTROL_CENTER_API_TOKEN.'
-    : meta.message ?? 'RabbitStation Haupt-App ist nicht verbunden.';
+      'Das Control Center konnte keine echten Daten aus der RabbitStation Haupt-App laden.'
+    : meta.message ??
+      'Das Control Center konnte keine echten Daten aus der RabbitStation Haupt-App laden.';
 
   return (
     <div className="mb-4 rounded-lg border border-neon-red/40 bg-neon-red/10 px-4 py-3 text-sm text-red-100">
@@ -50,7 +51,7 @@ export function DataSourceBanner({ meta, onRetry, retrying }: DataSourceBannerPr
             disabled={retrying}
             className="shrink-0 rounded-lg border border-neon-cyan/40 px-3 py-1.5 text-xs font-medium text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-50"
           >
-            {retrying ? 'Lädt…' : 'Aktualisieren'}
+            {retrying ? 'Lädt…' : 'Erneut prüfen'}
           </button>
         : null}
       </div>

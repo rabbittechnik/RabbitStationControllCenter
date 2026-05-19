@@ -25,18 +25,16 @@ export function ControlCenterHeader({
   onMenuClick,
 }: ControlCenterHeaderProps) {
   const statusLabel =
-    overallStatus === 'ok'
-      ? 'Operational'
-      : overallStatus === 'warning'
-        ? 'Warnung'
-        : 'Störung';
+    overallStatus === 'ok' ? 'Operational'
+    : overallStatus === 'warning' ? 'Warnung'
+    : overallStatus === 'unknown' ? 'Unbekannt'
+    : 'Störung';
 
   const statusColor =
-    overallStatus === 'ok'
-      ? 'text-neon-green'
-      : overallStatus === 'warning'
-        ? 'text-neon-orange'
-        : 'text-neon-red';
+    overallStatus === 'ok' ? 'text-neon-green'
+    : overallStatus === 'warning' ? 'text-neon-orange'
+    : overallStatus === 'unknown' ? 'text-slate-400'
+    : 'text-neon-red';
 
   return (
     <header className="border-b border-white/5 bg-navy-900/50 px-4 py-4 lg:px-6">

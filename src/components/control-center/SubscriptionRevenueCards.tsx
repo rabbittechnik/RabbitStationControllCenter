@@ -5,9 +5,10 @@ import { formatCurrency } from '../../utils/format';
 interface SubscriptionRevenueCardsProps {
   data: SubscriptionSummary | null;
   unavailable?: boolean;
+  loading?: boolean;
 }
 
-export function SubscriptionRevenueCards({ data, unavailable }: SubscriptionRevenueCardsProps) {
+export function SubscriptionRevenueCards({ data, unavailable, loading }: SubscriptionRevenueCardsProps) {
   if (unavailable) {
     return (
       <div>
@@ -15,7 +16,7 @@ export function SubscriptionRevenueCards({ data, unavailable }: SubscriptionReve
           <h3 className="text-sm font-semibold text-white">Abos &amp; Umsatz</h3>
           <p className="text-xs text-slate-500">aktueller Monat</p>
         </div>
-        <p className="glass-card p-4 text-sm text-slate-500">Nicht verfügbar</p>
+        <p className="glass-card p-4 text-sm text-slate-500">Noch keine Abo-Daten verfügbar</p>
       </div>
     );
   }
@@ -33,28 +34,30 @@ export function SubscriptionRevenueCards({ data, unavailable }: SubscriptionReve
   const cards = [
     {
       title: 'Aktive Tenants',
-      value: String(data.activeTenants),
-      trend: data.activeTenantsTrend,
+      value: String(data.activeTenants ?? 0),
+      trend: data.activeTenantsTrend ?? '–',
       positive: true,
     },
     {
       title: 'Testphasen',
-      value: String(data.trials),
-      trend: data.trialsTrend,
+      value: String(data.trials ?? 0),
+      trend: data.trialsTrend ?? '–',
       positive: false,
     },
     {
       title: 'Aktive Abos',
-      value: String(data.activeSubscriptions),
-      trend: data.activeSubscriptionsTrend,
+      value: String(data.activeSubscriptions ?? 0),
+      trend: data.activeSubscriptionsTrend ?? '–',
       positive: true,
     },
     {
       title: 'Monatsumsatz',
-      value: data.monthlyRevenue > 0 ? formatCurrency(data.monthlyRevenue) : '–',
+      value: (data.monthlyRevenue ?? 0) > 0 ? formatCurrency(data.monthlyRevenue ?? 0) : '–',
       trend:
-        data.monthlyRevenue > 0 ? data.monthlyRevenueTrend : 'Noch keine Zahlungsdaten verfügbar',
-      positive: data.monthlyRevenue > 0,
+        (data.monthlyRevenue ?? 0) > 0 ?
+          (data.monthlyRevenueTrend ?? '–')
+        : 'Noch keine Zahlungsdaten verfügbar',
+      positive: (data.monthlyRevenue ?? 0) > 0,
       highlight: true,
     },
   ];

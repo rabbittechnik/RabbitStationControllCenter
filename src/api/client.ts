@@ -2,6 +2,18 @@ import type { ControlCenterMeta, ControlCenterOverviewResponse, HealthResponse }
 
 const BASE = '/api';
 
+export type ApiFail = {
+  ok: false;
+  error: string;
+  message: string;
+  meta?: ControlCenterMeta;
+  code?: string;
+};
+
+export type ApiSuccess<T> = { ok: true; data: T };
+
+export type ApiResult<T> = ApiSuccess<T> | ApiFail;
+
 export class ApiRequestError extends Error {
   meta?: ControlCenterMeta;
   code?: string;
@@ -14,28 +26,87 @@ export class ApiRequestError extends Error {
   }
 }
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    ...options,
-  });
+function fail(
+  error: string,
+  message: string,
+  meta?: ControlCenterMeta,
+  code?: string,
+): ApiFail {
+  return { ok: false, error, message, meta, code };
+}
 
-  const body = (await res.json().catch(() => ({}))) as T & {
-    error?: string;
-    meta?: ControlCenterMeta;
-    code?: string;
-  };
-
-  if (!res.ok) {
-    throw new ApiRequestError(
-      body.error ?? res.statusText ?? 'Anfrage fehlgeschlagen',
-      body.meta,
-      body.code,
+async function parseJsonBody(res: Response): Promise<{
+  ok: true;
+  body: Record<string, unknown>;
+} | ApiFail> {
+  const text = await res.text();
+  if (!text.trim()) {
+    return fail('empty_response', 'Die Haupt-App hat eine leere Antwort geliefert.');
+  }
+  try {
+    const body = JSON.parse(text) as Record<string, unknown>;
+    return { ok: true, body };
+  } catch {
+    const preview = text.slice(0, 80).replace(/\s+/g, ' ');
+    return fail(
+      'invalid_json',
+      'Die Haupt-App hat keine gültige JSON-Antwort geliefert.',
+      undefined,
+      preview.startsWith('<') ? 'html_response' : 'parse_error',
     );
   }
+}
 
-  return body as T;
+async function requestSafe<T>(path: string, options?: RequestInit): Promise<ApiResult<T>> {
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...options?.headers },
+      ...options,
+    });
+
+    const parsed = await parseJsonBody(res);
+    if (!parsed.ok) {
+      const body = parsed as ApiFail;
+      if (!res.ok) {
+        body.meta = (parsed as ApiFail).meta;
+      }
+      return parsed;
+    }
+
+    const body = parsed.body as T & {
+      error?: string;
+      message?: string;
+      meta?: ControlCenterMeta;
+      code?: string;
+    };
+
+    if (!res.ok) {
+      const errBody = body as { error?: string; message?: string; meta?: ControlCenterMeta; code?: string };
+      return fail(
+        errBody.code ?? 'request_failed',
+        errBody.message ?? (typeof errBody.error === 'string' ? errBody.error : undefined) ?? res.statusText ?? 'Anfrage fehlgeschlagen',
+        errBody.meta,
+        errBody.code,
+      );
+    }
+
+    return { ok: true, data: body as T };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Netzwerkfehler';
+    if (msg.toLowerCase().includes('fetch')) {
+      return fail('network_error', 'Verbindung zum Control-Center-Server fehlgeschlagen.');
+    }
+    return fail('network_error', msg);
+  }
+}
+
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const result = await requestSafe<T>(path, options);
+  if (!result.ok) {
+    throw new ApiRequestError(result.message, result.meta, result.code);
+  }
+  return result.data;
 }
 
 export const api = {
@@ -48,14 +119,14 @@ export const api = {
   logout: () => request<{ ok: boolean }>('/auth/logout', { method: 'POST' }),
 
   getConfigStatus: () =>
-    request<{
+    requestSafe<{
       apiConfigured: boolean;
       apiUrlSet: boolean;
       tokenSet: boolean;
       error: string | null;
     }>('/control-center/config-status'),
 
-  getOverview: () => request<ControlCenterOverviewResponse>('/control-center/overview'),
+  getOverview: () => requestSafe<ControlCenterOverviewResponse>('/control-center/overview'),
 
   getHealth: () =>
     request<HealthResponse & { meta?: ControlCenterMeta }>('/control-center/health'),

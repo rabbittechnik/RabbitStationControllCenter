@@ -16,9 +16,29 @@ interface SystemHealthChartProps {
   data: ChartPoint[];
   period: string;
   onPeriodChange: (p: '24h' | '7d' | '30d') => void;
+  unavailable?: boolean;
 }
 
-export function SystemHealthChart({ data, period, onPeriodChange }: SystemHealthChartProps) {
+export function SystemHealthChart({
+  data,
+  period,
+  onPeriodChange,
+  unavailable,
+}: SystemHealthChartProps) {
+  const chartData = Array.isArray(data) ? data : [];
+
+  if (unavailable) {
+    return (
+      <p className="glass-card p-4 text-sm text-slate-500">Systemgesundheit: Nicht verfügbar</p>
+    );
+  }
+
+  if (chartData.length === 0) {
+    return (
+      <p className="glass-card p-4 text-sm text-slate-500">Keine Diagrammdaten verfügbar.</p>
+    );
+  }
+
   const periods = [
     { id: '24h' as const, label: 'Letzte 24 Stunden' },
     { id: '7d' as const, label: 'Letzte 7 Tage' },
@@ -28,25 +48,9 @@ export function SystemHealthChart({ data, period, onPeriodChange }: SystemHealth
   return (
     <div className="glass-card flex flex-col p-4 lg:flex-row lg:gap-4">
       <div className="min-h-[260px] flex-1">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h3 className="text-sm font-semibold text-white">Systemgesundheit</h3>
-            <p className="text-xs text-slate-500">letzte 24 Stunden</p>
-          </div>
-          <select
-            value={period}
-            onChange={(e) => onPeriodChange(e.target.value as '24h' | '7d' | '30d')}
-            className="rounded-lg border border-white/10 bg-navy-850 px-2 py-1 text-xs text-slate-300"
-          >
-            {periods.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        <motionlessHealthChartHeader period={period} onPeriodChange={onPeriodChange} periods={periods} />
         <ResponsiveContainer width="100%" height={220}>
-          <ComposedChart data={data} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
+          <ComposedChart data={chartData} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
             <XAxis dataKey="label" tick={{ fill: '#64748b', fontSize: 10 }} interval="preserveStartEnd" />
             <YAxis yAxisId="left" tick={{ fill: '#64748b', fontSize: 10 }} width={36} />
@@ -85,11 +89,41 @@ export function SystemHealthChart({ data, period, onPeriodChange }: SystemHealth
       <div className="mt-4 w-full border-t border-white/5 pt-4 lg:mt-0 lg:w-48 lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0">
         <h4 className="mb-2 text-xs font-semibold text-slate-300">Anfragen (stündlich)</h4>
         <ResponsiveContainer width="100%" height={180}>
-          <BarChart data={data}>
+          <BarChart data={chartData}>
             <Bar dataKey="requests" fill="rgba(0, 229, 255, 0.5)" radius={[2, 2, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>
+    </div>
+  );
+}
+
+function motionlessHealthChartHeader({
+  period,
+  onPeriodChange,
+  periods,
+}: {
+  period: string;
+  onPeriodChange: (p: '24h' | '7d' | '30d') => void;
+  periods: { id: '24h' | '7d' | '30d'; label: string }[];
+}) {
+  return (
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+      <div>
+        <h3 className="text-sm font-semibold text-white">Systemgesundheit</h3>
+        <p className="text-xs text-slate-500">letzte 24 Stunden</p>
+      </div>
+      <select
+        value={period}
+        onChange={(e) => onPeriodChange(e.target.value as '24h' | '7d' | '30d')}
+        className="rounded-lg border border-white/10 bg-navy-850 px-2 py-1 text-xs text-slate-300"
+      >
+        {periods.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.label}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }
