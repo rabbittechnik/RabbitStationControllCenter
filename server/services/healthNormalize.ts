@@ -15,8 +15,16 @@ type HealthComponent = {
   nextBackupAt?: string;
 };
 
+export type ComponentDisplay = {
+  status: HealthStatus;
+  configured: boolean;
+  displayValue: string;
+  displaySubtitle: string;
+};
+
 export function parseHealthStatus(value: unknown): HealthStatus {
   if (value === 'ok' || value === 'warning' || value === 'error' || value === 'unknown') return value;
+  if (value === 'not_configured') return 'unknown';
   return 'warning';
 }
 
@@ -27,6 +35,229 @@ export function pickHealthComponent(raw: unknown): HealthComponent | null {
 
 export function componentStatus(raw: unknown, fallback: HealthStatus = 'warning'): HealthStatus {
   return parseHealthStatus(pickHealthComponent(raw)?.status ?? fallback);
+}
+
+/** Liest Health aus { ok, data } oder direkt aus dem Payload. */
+export function unwrapHealthPayload(payload: unknown): Record<string, unknown> {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return {};
+  const obj = payload as Record<string, unknown>;
+  if (
+    obj.ok === true &&
+    obj.data != null &&
+    typeof obj.data === 'object' &&
+    !Array.isArray(obj.data)
+  ) {
+    return obj.data as Record<string, unknown>;
+  }
+  return obj;
+}
+
+export function isNotConfiguredMessage(msg?: string): boolean {
+  if (!msg) return false;
+  const m = msg.toLowerCase();
+  return (
+    m.includes('not configured') ||
+    m.includes('nicht konfiguriert') ||
+    m.includes('noch nicht angebunden') ||
+    m.includes('noch nicht eingerichtet') ||
+    m.includes('not set up')
+  );
+}
+
+export function isPaymentProviderNotConfigured(status?: string, message?: string): boolean {
+  if (status === 'not_configured') return true;
+  const m = (message ?? '').toLowerCase();
+  if (m.includes('payment provider not configured')) return true;
+  if (m.includes('zahlung') && m.includes('not configured')) return true;
+  if (status === 'warning' && m.includes('not configured') && m.includes('payment')) return true;
+  return false;
+}
+
+export function isBackupSystemNotConfigured(status?: string, message?: string): boolean {
+  if (status === 'not_configured') return true;
+  const m = (message ?? '').toLowerCase();
+  if (m.includes('backup system not configured')) return true;
+  if (m.includes('backup') && m.includes('not configured')) return true;
+  if (status === 'warning' && m.includes('not configured') && m.includes('backup')) return true;
+  return false;
+}
+
+export function isRealPaymentIssue(message?: string, openCases?: number): boolean {
+  if ((openCases ?? 0) > 0) return true;
+  if (!message) return false;
+  const m = message.toLowerCase();
+  return (
+    m.includes('past_due') ||
+    m.includes('payment_failed') ||
+    m.includes('provider_error') ||
+    m.includes('offene zahlung') ||
+    (m.includes('failed') && m.includes('payment') && !m.includes('not configured'))
+  );
+}
+
+export function isRealBackupFailure(
+  backupConfigured: boolean | undefined,
+  lastBackupStatus?: string,
+  healthBackupStatus?: string,
+  message?: string,
+): boolean {
+  if (backupConfigured !== true) return false;
+  const m = (message ?? '').toLowerCase();
+  if (lastBackupStatus === 'error' || lastBackupStatus === 'failed') return true;
+  if (healthBackupStatus === 'error') return true;
+  return (
+    m.includes('last_backup_failed') ||
+    m.includes('backup_job_error') ||
+    m.includes('storage_unreachable') ||
+    (m.includes('failed') && m.includes('backup') && !m.includes('not configured'))
+  );
+}
+
+export function classifyMailForDisplay(mail?: HealthComponent | null): ComponentDisplay {
+  const statusRaw = mail?.status;
+  if (!statusRaw) {
+    return {
+      status: 'unknown',
+      configured: false,
+      displayValue: 'Nicht verfügbar',
+      displaySubtitle: mail?.message ?? '',
+    };
+  }
+  const status = parseHealthStatus(statusRaw);
+  if (status === 'ok') {
+    return {
+      status: 'ok',
+      configured: true,
+      displayValue: 'OK',
+      displaySubtitle: 'SMTP konfiguriert',
+    };
+  }
+  if (statusRaw === 'not_configured' || isNotConfiguredMessage(mail?.message)) {
+    return {
+      status: 'unknown',
+      configured: false,
+      displayValue: 'Nicht konfiguriert',
+      displaySubtitle: mail?.message ?? 'SMTP nicht eingerichtet',
+    };
+  }
+  if (status === 'error') {
+    return {
+      status: 'error',
+      configured: true,
+      displayValue: 'Fehler',
+      displaySubtitle: mail?.message ?? 'Mailfehler',
+    };
+  }
+  if (status === 'warning') {
+    return {
+      status: 'warning',
+      configured: true,
+      displayValue: 'Warnung',
+      displaySubtitle: mail?.message ?? 'Mail-Warnung',
+    };
+  }
+  return {
+    status: 'unknown',
+    configured: false,
+    displayValue: 'Nicht verfügbar',
+    displaySubtitle: mail?.message ?? '',
+  };
+}
+
+export function classifyPaymentsForDisplay(payments?: HealthComponent | null): ComponentDisplay {
+  const statusRaw = payments?.status;
+  const message = payments?.message;
+  const openCases = payments?.openCases ?? 0;
+
+  if (isPaymentProviderNotConfigured(statusRaw, message)) {
+    return {
+      status: 'unknown',
+      configured: false,
+      displayValue: 'Nicht konfiguriert',
+      displaySubtitle: 'Zahlungssystem noch nicht angebunden',
+    };
+  }
+  if (!statusRaw) {
+    return {
+      status: 'unknown',
+      configured: false,
+      displayValue: 'Nicht verfügbar',
+      displaySubtitle: message ?? '',
+    };
+  }
+  if (isRealPaymentIssue(message, openCases)) {
+    return {
+      status: 'warning',
+      configured: true,
+      displayValue: 'Warnung',
+      displaySubtitle:
+        openCases > 0 ? `${openCases} offene Fälle` : (message ?? 'Zahlungsproblem'),
+    };
+  }
+  const status = parseHealthStatus(statusRaw);
+  if (status === 'error') {
+    return {
+      status: 'error',
+      configured: true,
+      displayValue: 'Fehler',
+      displaySubtitle: message ?? 'Zahlungsfehler',
+    };
+  }
+  if (status === 'ok') {
+    return {
+      status: 'ok',
+      configured: true,
+      displayValue: 'OK',
+      displaySubtitle: message ?? 'Keine offenen Zahlungsfälle',
+    };
+  }
+  return {
+    status: 'unknown',
+    configured: false,
+    displayValue: 'Nicht verfügbar',
+    displaySubtitle: message ?? '',
+  };
+}
+
+export function classifyBackupsForDisplay(
+  healthBackups?: HealthComponent | null,
+  backupMeta?: { configured?: boolean; message?: string; lastBackupStatus?: string },
+): ComponentDisplay {
+  const message = healthBackups?.message ?? backupMeta?.message;
+  const notConfigured =
+    backupMeta?.configured === false ||
+    isBackupSystemNotConfigured(healthBackups?.status, message);
+
+  if (notConfigured) {
+    return {
+      status: 'unknown',
+      configured: false,
+      displayValue: 'Nicht konfiguriert',
+      displaySubtitle: 'Backup-System noch nicht eingerichtet',
+    };
+  }
+  if (isRealBackupFailure(backupMeta?.configured, backupMeta?.lastBackupStatus, healthBackups?.status, message)) {
+    return {
+      status: 'error',
+      configured: true,
+      displayValue: 'Fehler',
+      displaySubtitle: message ?? 'Backup fehlgeschlagen',
+    };
+  }
+  if (backupMeta?.lastBackupStatus === 'success') {
+    return {
+      status: 'ok',
+      configured: true,
+      displayValue: 'OK',
+      displaySubtitle: message ?? 'Backup erfolgreich',
+    };
+  }
+  return {
+    status: 'unknown',
+    configured: true,
+    displayValue: 'Unbekannt',
+    displaySubtitle: message ?? 'Noch kein Backup gelaufen',
+  };
 }
 
 export function databaseVersionLabel(raw: unknown): string {
@@ -54,27 +285,41 @@ function mergeComponentWarnings(health: Record<string, unknown>): string[] {
   const mail = pickHealthComponent(health.mail);
   const payments = pickHealthComponent(health.payments);
   const storage = pickHealthComponent(health.storage);
-  const uptime = health.uptime;
 
-  if (mail?.message) warnings.push(`Mail: ${mail.message}`);
-  else if (componentStatus(health.mail) === 'warning') warnings.push('Mail: Unbekannt');
-
-  if (payments?.message) warnings.push(`Zahlungen: ${payments.message}`);
-  else if (componentStatus(health.payments) === 'warning') warnings.push('Zahlungen: Unbekannt');
-
-  if (storage?.message) warnings.push(`Speicher: ${storage.message}`);
-  else if (componentStatus(health.storage) === 'warning') warnings.push('Speicher: Unbekannt');
-
-  if (typeof uptime === 'string') warnings.push(`Uptime: ${uptime}`);
-  else if (componentStatus(health.uptime) === 'warning') warnings.push('Uptime: Unbekannt');
+  if (mail?.message && !isNotConfiguredMessage(mail.message) && componentStatus(health.mail) === 'warning') {
+    warnings.push(`Mail: ${mail.message}`);
+  }
+  if (
+    payments?.message &&
+    !isPaymentProviderNotConfigured(payments.status, payments.message) &&
+    componentStatus(health.payments) === 'warning'
+  ) {
+    warnings.push(`Zahlungen: ${payments.message}`);
+  }
+  if (storage?.message && componentStatus(health.storage) === 'warning') {
+    warnings.push(`Speicher: ${storage.message}`);
+  }
 
   return warnings;
 }
 
-/** Normalisiert die Haupt-App Admin-Health-API in das Control-Center-Format. */
+/**
+ * Normalisiert die Haupt-App Admin-Health-API (inkl. optional { ok, data }-Wrapper).
+ */
+export function normalizeHealthResponse(
+  payload: unknown,
+  backups: { configured?: boolean; lastBackup?: string | null; message?: string; lastBackupStatus?: string },
+  responseTimeMs: number,
+  apiReachable: boolean,
+): HealthResponse {
+  const health = unwrapHealthPayload(payload);
+  return normalizeAdminHealthPayload(health, backups, responseTimeMs, apiReachable);
+}
+
+/** Normalisiert bereits entpackte Health-Daten in das Control-Center-Format. */
 export function normalizeAdminHealthPayload(
   health: Record<string, unknown>,
-  backups: { configured?: boolean; lastBackup?: string | null; message?: string },
+  backups: { configured?: boolean; lastBackup?: string | null; message?: string; lastBackupStatus?: string },
   responseTimeMs: number,
   apiReachable: boolean,
 ): HealthResponse {
@@ -88,8 +333,8 @@ export function normalizeAdminHealthPayload(
       app: { status: 'error', message: 'Haupt-App nicht erreichbar' },
       api: { status: 'error', responseTimeMs: 0 },
       database: { status: 'error', connections: 0 },
-      mail: { status: 'unknown', deliveryRate: 0, message: 'Nicht verfügbar' },
-      payments: { status: 'unknown', openCases: 0, message: 'Nicht verfügbar' },
+      mail: { status: 'unknown', deliveryRate: 0, message: 'Nicht verfügbar', configured: false },
+      payments: { status: 'unknown', openCases: 0, message: 'Nicht verfügbar', configured: false },
       backups: { status: 'error', lastBackupAt: checkedAt, nextBackupAt: checkedAt },
       storage: { status: 'warning', usedPercent: 0, usedGb: 0, totalGb: 0 },
       uptime: { status: 'warning', percent30Days: 0 },
@@ -101,91 +346,76 @@ export function normalizeAdminHealthPayload(
   const app = pickHealthComponent(health.app);
   const api = pickHealthComponent(health.api);
   const database = pickHealthComponent(health.database);
-  const mail = pickHealthComponent(health.mail);
-  const payments = pickHealthComponent(health.payments);
+  const mailRaw = pickHealthComponent(health.mail);
+  const paymentsRaw = pickHealthComponent(health.payments);
   const storage = pickHealthComponent(health.storage);
   const backupsHealth = pickHealthComponent(health.backups);
   const uptimeRaw = health.uptime;
 
-  const backupOk = backups.configured === true;
-  const backupStatus: HealthStatus =
-    backups.configured === false ? 'unknown'
-    : backupsHealth?.status ?
-      parseHealthStatus(backupsHealth.status)
-    : backupOk ? 'ok'
-    : 'warning';
+  const mailDisplay = classifyMailForDisplay(mailRaw);
+  const paymentsDisplay = classifyPaymentsForDisplay(paymentsRaw);
+  const backupsDisplay = classifyBackupsForDisplay(backupsHealth, {
+    configured: backups.configured,
+    message: backups.message ?? backupsHealth?.message,
+    lastBackupStatus: backups.lastBackupStatus,
+  });
 
-  const uptimeLabel = typeof uptimeRaw === 'string' ? uptimeRaw : undefined;
-
+  const uptimeLabelStr = typeof uptimeRaw === 'string' ? uptimeRaw : undefined;
   const uptimePercent =
     typeof uptimeRaw === 'object' && uptimeRaw && !Array.isArray(uptimeRaw) ?
       Number((uptimeRaw as HealthComponent).percent30Days ?? 0)
     : 0;
-
   const uptimeStatus: HealthStatus =
-    typeof uptimeRaw === 'string' ? 'ok' : parseHealthStatus(pickHealthComponent(uptimeRaw)?.status ?? 'warning');
+    typeof uptimeRaw === 'string' ? 'ok' : parseHealthStatus(pickHealthComponent(uptimeRaw)?.status ?? 'unknown');
 
-  const parts: HealthStatus[] = [
-    parseHealthStatus(app?.status ?? (health.ok === false ? 'error' : 'ok')),
-    parseHealthStatus(api?.status ?? 'ok'),
-    parseHealthStatus(database?.status ?? 'ok'),
-    parseHealthStatus(mail?.status ?? 'warning'),
-    parseHealthStatus(payments?.status ?? 'warning'),
-    backupStatus,
-    parseHealthStatus(storage?.status ?? 'warning'),
-    uptimeStatus,
-  ];
-
-  const overallStatus: HealthStatus =
-    typeof health.overallStatus === 'string' ?
-      parseHealthStatus(health.overallStatus)
-    : parts.includes('error') ? 'error'
-    : parts.includes('warning') ? 'warning'
-    : 'ok';
+  const appStatus = parseHealthStatus(app?.status ?? 'ok');
+  const apiStatus = parseHealthStatus(api?.status ?? 'ok');
+  const dbStatus = parseHealthStatus(database?.status ?? 'ok');
 
   const errors: string[] = [];
   if (health.ok === false) errors.push('Haupt-App meldet Fehlerstatus');
-  if (database?.status === 'error' && database.message) {
-    errors.push(database.message);
-  }
+  if (dbStatus === 'error' && database?.message) errors.push(database.message);
 
   return {
-    overallStatus,
+    overallStatus: parseHealthStatus(
+      typeof health.overallStatus === 'string' ? health.overallStatus : 'ok',
+    ),
     checkedAt,
     app: {
-      status: parseHealthStatus(app?.status ?? (health.ok === false ? 'error' : 'ok')),
+      status: appStatus,
       message:
         app?.message ??
         (typeof health.product === 'string' ? health.product : undefined) ??
         (typeof health.service === 'string' ? health.service : undefined) ??
-        'RabbitStation Pro',
+        'RabbitStation Haupt-App online',
     },
     api: {
-      status: parseHealthStatus(api?.status ?? 'ok'),
+      status: apiStatus,
       responseTimeMs: api?.responseTimeMs ?? responseTimeMs,
     },
     database: {
-      status: parseHealthStatus(database?.status ?? 'ok'),
+      status: dbStatus,
       connections: database?.connections ?? 0,
     },
     mail: {
-      status: parseHealthStatus(mail?.status ?? 'warning'),
-      deliveryRate: mail?.deliveryRate ?? 0,
-      message: mail?.message,
+      status: mailDisplay.status,
+      deliveryRate: mailRaw?.deliveryRate ?? 0,
+      message: mailDisplay.displaySubtitle,
+      configured: mailDisplay.configured,
     },
     payments: {
-      status: parseHealthStatus(payments?.status ?? 'warning'),
-      openCases: payments?.openCases ?? 0,
-      message: payments?.message,
+      status: paymentsDisplay.status,
+      openCases: paymentsRaw?.openCases ?? 0,
+      message: paymentsDisplay.displaySubtitle,
+      configured: paymentsDisplay.configured,
     },
     backups: {
-      status: backupStatus,
-      lastBackupAt:
-        backupsHealth?.lastBackupAt ?? backups.lastBackup ?? checkedAt,
+      status: backupsDisplay.status,
+      lastBackupAt: backupsHealth?.lastBackupAt ?? backups.lastBackup ?? checkedAt,
       nextBackupAt: backupsHealth?.nextBackupAt ?? checkedAt,
     },
     storage: {
-      status: parseHealthStatus(storage?.status ?? 'warning'),
+      status: parseHealthStatus(storage?.status ?? 'ok'),
       usedPercent: storage?.usedPercent ?? 0,
       usedGb: storage?.usedGb ?? 0,
       totalGb: storage?.totalGb ?? 0,
@@ -194,7 +424,7 @@ export function normalizeAdminHealthPayload(
       status: uptimeStatus,
       percent30Days: uptimePercent,
     },
-    uptimeLabel,
+    uptimeLabel: uptimeLabelStr,
     warnings: mergeComponentWarnings(health),
     errors,
   };
@@ -213,22 +443,23 @@ export function mapSystemInfoFromHealth(health: Record<string, unknown>): {
   lastDeploy: string;
   commitHash: string;
 } {
+  const unwrapped = unwrapHealthPayload(health);
   const checkedAt =
-    typeof health.checkedAt === 'string' ? health.checkedAt : new Date().toISOString();
+    typeof unwrapped.checkedAt === 'string' ? unwrapped.checkedAt : new Date().toISOString();
 
   return {
-    environment: typeof health.environment === 'string' ? health.environment : 'Produktion',
+    environment: typeof unwrapped.environment === 'string' ? unwrapped.environment : 'Produktion',
     region: 'Railway',
     version:
-      typeof health.version === 'string' ? health.version
-      : typeof health.product === 'string' ? health.product
+      typeof unwrapped.version === 'string' ? unwrapped.version
+      : typeof unwrapped.product === 'string' ? unwrapped.product
       : 'RabbitStation Pro',
-    build: typeof health.service === 'string' ? health.service : 'live',
+    build: typeof unwrapped.service === 'string' ? unwrapped.service : 'live',
     serverTime: checkedAt,
-    uptime: uptimeLabel(health.uptime),
+    uptime: uptimeLabel(unwrapped.uptime),
     systemLoadPercent: 0,
     nodeVersion: process.version,
-    databaseVersion: databaseVersionLabel(health.database),
+    databaseVersion: databaseVersionLabel(unwrapped.database),
     lastDeploy: checkedAt,
     commitHash: 'live-api',
   };

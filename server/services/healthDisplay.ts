@@ -1,31 +1,13 @@
 import type { BackupStatus, HealthResponse, HealthStatus, SystemLog } from '../types.js';
 import { hasRecentMailFailure } from './logFormat.js';
+import {
+  classifyBackupsForDisplay,
+  classifyMailForDisplay,
+  classifyPaymentsForDisplay,
+  isRealBackupFailure,
+} from './healthNormalize.js';
 
 export type OverallDisplayStatus = 'operational' | 'warning' | 'partial' | 'outage';
-
-function isNotConfiguredMessage(msg?: string): boolean {
-  if (!msg) return false;
-  const m = msg.toLowerCase();
-  return (
-    m.includes('not configured') ||
-    m.includes('nicht konfiguriert') ||
-    m.includes('noch nicht') ||
-    m.includes('fehlt') ||
-    m.includes('missing')
-  );
-}
-
-function smtpNotConfigured(mailMessage?: string): boolean {
-  if (!mailMessage) return true;
-  const m = mailMessage.toLowerCase();
-  return m.includes('smtp') && (m.includes('not configured') || m.includes('nicht'));
-}
-
-function paymentsNotConfigured(paymentsMessage?: string): boolean {
-  if (!paymentsMessage) return true;
-  const m = paymentsMessage.toLowerCase();
-  return m.includes('payment') && m.includes('not configured');
-}
 
 /** Berechnet realistischen Gesamtstatus – „nicht konfiguriert“ zählt nicht als Störung. */
 export function computeOverallDisplayStatus(
@@ -43,32 +25,40 @@ export function computeOverallDisplayStatus(
     return { status: 'error', label: 'outage' };
   }
 
-  const mailMsg = (health.mail as { message?: string }).message;
-  const mailConfigured = !smtpNotConfigured(mailMsg);
+  const mailConfigured = health.mail.configured !== false;
   const mailFailed = hasRecentMailFailure(logs);
+  const mailWarning =
+    mailConfigured &&
+    (mailFailed || health.mail.status === 'error' || health.mail.status === 'warning');
 
-  const paymentsMsg = (health.payments as { message?: string }).message;
-  const paymentsConfigured = !paymentsNotConfigured(paymentsMsg);
-  const openPayments = (health.payments.openCases ?? 0) > 0;
+  const paymentsConfigured = health.payments.configured !== false;
+  const paymentsWarning =
+    paymentsConfigured &&
+    (health.payments.status === 'error' ||
+      health.payments.status === 'warning' ||
+      (health.payments.openCases ?? 0) > 0);
 
-  const backupFailed =
-    backups.configured === true &&
-    (backups.lastBackupStatus === 'error' || backups.lastBackupStatus === 'failed');
+  const backupConfigured = backups.configured === true;
+  const backupFailed = isRealBackupFailure(
+    backups.configured,
+    backups.lastBackupStatus,
+    health.backups?.status,
+    backups.message,
+  );
 
-  const hasWarning =
-    (mailConfigured && (mailFailed || health.mail.status === 'error')) ||
-    (paymentsConfigured && (openPayments || health.payments.status === 'error')) ||
-    backupFailed;
+  const hasWarning = mailWarning || paymentsWarning || backupFailed;
 
   const partialOnly =
     !hasWarning &&
-    (!mailConfigured || !paymentsConfigured || backups.configured === false);
+    (health.mail.configured === false ||
+      health.payments.configured === false ||
+      backups.configured === false);
 
   if (hasWarning) {
     return { status: 'warning', label: 'warning' };
   }
   if (partialOnly) {
-    return { status: 'warning', label: 'partial' };
+    return { status: 'ok', label: 'partial' };
   }
   return { status: 'ok', label: 'operational' };
 }
@@ -78,36 +68,24 @@ export function refineHealthComponents(
   backups: BackupStatus,
   logs: SystemLog[],
 ): HealthResponse {
-  const mailMsg = (health.mail as { message?: string }).message ?? '';
-  const paymentsMsg = (health.payments as { message?: string }).message ?? '';
-  const mailConfigured = !smtpNotConfigured(mailMsg);
-  const paymentsConfigured = !paymentsNotConfigured(paymentsMsg);
-  const mailFailed = hasRecentMailFailure(logs);
-
-  let mailStatus: HealthStatus = 'ok';
-  if (!mailConfigured) {
-    mailStatus = 'unknown';
-  } else if (mailFailed) {
-    mailStatus = 'warning';
-  } else if (isNotConfiguredMessage(mailMsg)) {
-    mailStatus = 'unknown';
-  }
-
-  let paymentsStatus: HealthStatus = 'ok';
-  if (!paymentsConfigured) {
-    paymentsStatus = 'unknown';
-  } else if ((health.payments.openCases ?? 0) > 0) {
-    paymentsStatus = 'warning';
-  }
-
-  let backupHealthStatus: HealthStatus = 'ok';
-  if (backups.configured === false) {
-    backupHealthStatus = 'unknown';
-  } else if (backups.lastBackupStatus === 'error' || backups.lastBackupStatus === 'failed') {
-    backupHealthStatus = 'error';
-  } else if (backups.lastBackupStatus !== 'success') {
-    backupHealthStatus = 'warning';
-  }
+  const mailDisplay = classifyMailForDisplay({
+    status: health.mail.status,
+    message: health.mail.message,
+    deliveryRate: health.mail.deliveryRate,
+  });
+  const paymentsDisplay = classifyPaymentsForDisplay({
+    status: health.payments.status,
+    message: health.payments.message,
+    openCases: health.payments.openCases,
+  });
+  const backupsDisplay = classifyBackupsForDisplay(
+    { status: health.backups?.status, message: backups.message },
+    {
+      configured: backups.configured,
+      message: backups.message,
+      lastBackupStatus: backups.lastBackupStatus,
+    },
+  );
 
   const overall = computeOverallDisplayStatus(health, backups, logs);
 
@@ -117,25 +95,19 @@ export function refineHealthComponents(
     overallLabel: overall.label,
     mail: {
       ...health.mail,
-      status: mailStatus,
-      message:
-        !mailConfigured ? 'SMTP nicht konfiguriert'
-        : mailFailed ? 'Letzte Mail-Zustellung fehlgeschlagen'
-        : mailMsg || 'Mailversand bereit',
-      configured: mailConfigured,
+      status: mailDisplay.status,
+      configured: mailDisplay.configured,
+      message: mailDisplay.displaySubtitle,
     },
     payments: {
       ...health.payments,
-      status: paymentsStatus,
-      message:
-        !paymentsConfigured ?
-          'Zahlungssystem noch nicht angebunden'
-        : paymentsMsg,
-      configured: paymentsConfigured,
+      status: paymentsDisplay.status,
+      configured: paymentsDisplay.configured,
+      message: paymentsDisplay.displaySubtitle,
     },
     backups: {
       ...health.backups,
-      status: backupHealthStatus,
+      status: backupsDisplay.status,
     },
     storage: {
       ...health.storage,
@@ -143,7 +115,7 @@ export function refineHealthComponents(
     },
     uptime: {
       ...health.uptime,
-      status: health.uptimeLabel ? 'ok' : 'unknown',
+      status: health.uptimeLabel ? 'ok' : health.uptime.status,
     },
   };
 }

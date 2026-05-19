@@ -52,7 +52,7 @@ async function fetchLiveHealthBundle(): Promise<{
   ]);
   const responseTimeMs = Date.now() - t0;
   const backups = mapBackupStatus(backupsRaw);
-  const health = mapHealth(healthRaw, backupsRaw, responseTimeMs, true);
+  const health = mapHealth(healthRaw, { ...backupsRaw, lastBackupStatus: backups.lastBackupStatus }, responseTimeMs, true);
   return {
     health,
     backups,

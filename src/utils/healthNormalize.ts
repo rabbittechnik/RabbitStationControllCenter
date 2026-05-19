@@ -34,14 +34,29 @@ function mergeComponent<T extends Record<string, unknown>>(
   return map(pickComponent(partial), partial);
 }
 
+function unwrapHealthPayload(partial: unknown): Partial<HealthResponse> | null {
+  if (!partial || typeof partial !== 'object') return null;
+  const obj = partial as Record<string, unknown>;
+  if (
+    obj.ok === true &&
+    obj.data != null &&
+    typeof obj.data === 'object' &&
+    !Array.isArray(obj.data)
+  ) {
+    return obj.data as Partial<HealthResponse>;
+  }
+  return partial as Partial<HealthResponse>;
+}
+
 /** Client-seitige Absicherung — auch wenn die API noch Objekte in String-Feldern liefert. */
-export function normalizeHealthResponse(partial?: Partial<HealthResponse> | null): HealthResponse {
+export function normalizeHealthResponse(partial?: Partial<HealthResponse> | null | unknown): HealthResponse {
+  const source = unwrapHealthPayload(partial) ?? partial;
   const checkedAt =
-    typeof partial?.checkedAt === 'string' ? partial.checkedAt : new Date().toISOString();
+    typeof source?.checkedAt === 'string' ? source.checkedAt : new Date().toISOString();
 
   const app = mergeComponent(
     { status: 'unknown' as HealthStatus, message: 'Nicht verfügbar' },
-    partial?.app,
+    source?.app,
     (c) => ({
       status: parseStatus(c?.status, 'unknown'),
       message: safeText(c?.message, 'Nicht verfügbar'),
@@ -50,7 +65,7 @@ export function normalizeHealthResponse(partial?: Partial<HealthResponse> | null
 
   const api = mergeComponent(
     { status: 'unknown' as HealthStatus, responseTimeMs: 0 },
-    partial?.api,
+    source?.api,
     (c) => ({
       status: parseStatus(c?.status, 'unknown'),
       responseTimeMs: safeNumber(c?.responseTimeMs, 0),
@@ -59,7 +74,7 @@ export function normalizeHealthResponse(partial?: Partial<HealthResponse> | null
 
   const database = mergeComponent(
     { status: 'unknown' as HealthStatus, connections: 0 },
-    partial?.database,
+    source?.database,
     (c) => ({
       status: parseStatus(c?.status, 'unknown'),
       connections: safeNumber(c?.connections, 0),
@@ -68,23 +83,23 @@ export function normalizeHealthResponse(partial?: Partial<HealthResponse> | null
 
   const mail = mergeComponent(
     { status: 'unknown' as HealthStatus, deliveryRate: 0, message: undefined, configured: undefined },
-    partial?.mail,
+    source?.mail,
     (c) => ({
       status: parseStatus(c?.status, 'unknown'),
       deliveryRate: safeNumber(c?.deliveryRate, 0),
-      message: typeof c?.message === 'string' ? c.message : partial?.mail?.message,
-      configured: partial?.mail?.configured,
+      message: typeof c?.message === 'string' ? c.message : source?.mail?.message,
+      configured: source?.mail?.configured,
     }),
   );
 
   const payments = mergeComponent(
     { status: 'unknown' as HealthStatus, openCases: 0, message: undefined, configured: undefined },
-    partial?.payments,
+    source?.payments,
     (c) => ({
       status: parseStatus(c?.status, 'unknown'),
       openCases: safeNumber(c?.openCases, 0),
-      message: typeof c?.message === 'string' ? c.message : partial?.payments?.message,
-      configured: partial?.payments?.configured,
+      message: typeof c?.message === 'string' ? c.message : source?.payments?.message,
+      configured: source?.payments?.configured,
     }),
   );
 
@@ -94,7 +109,7 @@ export function normalizeHealthResponse(partial?: Partial<HealthResponse> | null
       lastBackupAt: checkedAt,
       nextBackupAt: checkedAt,
     },
-    partial?.backups,
+    source?.backups,
     (c) => ({
       status: parseStatus(c?.status, 'unknown'),
       lastBackupAt: safeText(c?.lastBackupAt, checkedAt),
@@ -104,7 +119,7 @@ export function normalizeHealthResponse(partial?: Partial<HealthResponse> | null
 
   const storage = mergeComponent(
     { status: 'unknown' as HealthStatus, usedPercent: 0, usedGb: 0, totalGb: 0 },
-    partial?.storage,
+    source?.storage,
     (c) => ({
       status: parseStatus(c?.status, 'unknown'),
       usedPercent: safeNumber(c?.usedPercent, 0),
@@ -114,12 +129,12 @@ export function normalizeHealthResponse(partial?: Partial<HealthResponse> | null
   );
 
   let uptime: HealthResponse['uptime'];
-  if (typeof partial?.uptime === 'string') {
+  if (typeof source?.uptime === 'string') {
     uptime = { status: 'ok', percent30Days: 0 };
   } else {
     uptime = mergeComponent(
       { status: 'unknown' as HealthStatus, percent30Days: 0 },
-      partial?.uptime,
+      source?.uptime,
       (c) => ({
         status: parseStatus(c?.status, 'unknown'),
         percent30Days: safeNumber(c?.percent30Days, 0),
@@ -128,10 +143,10 @@ export function normalizeHealthResponse(partial?: Partial<HealthResponse> | null
   }
 
   return {
-    overallStatus: parseStatus(partial?.overallStatus, 'unknown'),
-    overallLabel: partial?.overallLabel,
+    overallStatus: parseStatus(source?.overallStatus, 'unknown'),
+    overallLabel: source?.overallLabel,
     checkedAt,
-    uptimeLabel: typeof partial?.uptimeLabel === 'string' ? partial.uptimeLabel : undefined,
+    uptimeLabel: typeof source?.uptimeLabel === 'string' ? source.uptimeLabel : undefined,
     app,
     api,
     database,
@@ -140,8 +155,8 @@ export function normalizeHealthResponse(partial?: Partial<HealthResponse> | null
     backups,
     storage,
     uptime,
-    warnings: Array.isArray(partial?.warnings) ? partial.warnings.map((w) => safeText(w)) : [],
-    errors: Array.isArray(partial?.errors) ? partial.errors.map((e) => safeText(e)) : [],
+    warnings: Array.isArray(source?.warnings) ? source.warnings.map((w) => safeText(w)) : [],
+    errors: Array.isArray(source?.errors) ? source.errors.map((e) => safeText(e)) : [],
   };
 }
 

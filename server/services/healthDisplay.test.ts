@@ -10,9 +10,19 @@ function baseHealth(overrides: Partial<HealthResponse> = {}): HealthResponse {
     app: { status: 'ok', message: 'online' },
     api: { status: 'ok', responseTimeMs: 12 },
     database: { status: 'ok', connections: 1 },
-    mail: { status: 'ok', deliveryRate: 100, message: 'SMTP not configured' },
-    payments: { status: 'ok', openCases: 0, message: 'Payment provider not configured' },
-    backups: { status: 'ok', lastBackupAt: '', nextBackupAt: '' },
+    mail: {
+      status: 'ok',
+      deliveryRate: 100,
+      message: 'SMTP konfiguriert',
+      configured: true,
+    },
+    payments: {
+      status: 'unknown',
+      openCases: 0,
+      message: 'Zahlungssystem noch nicht angebunden',
+      configured: false,
+    },
+    backups: { status: 'unknown', lastBackupAt: '', nextBackupAt: '' },
     storage: { status: 'ok', usedPercent: 0, usedGb: 0, totalGb: 0 },
     uptime: { status: 'ok', percent30Days: 0 },
     warnings: [],
@@ -40,7 +50,7 @@ describe('computeOverallDisplayStatus', () => {
   it('reports warning when mail failed in logs', () => {
     const result = computeOverallDisplayStatus(
       baseHealth({
-        mail: { status: 'ok', deliveryRate: 100, message: 'SMTP ready' },
+        mail: { status: 'ok', deliveryRate: 100, message: 'SMTP konfiguriert', configured: true },
       }),
       { ...notConfiguredBackup, configured: true, lastBackupStatus: 'success' },
       [

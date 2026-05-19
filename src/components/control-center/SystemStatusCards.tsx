@@ -49,7 +49,10 @@ export function SystemStatusCards({ health, backups, loading, unavailable }: Sys
     : mail.status === 'error' ? 'Fehler'
     : 'OK';
 
-  const mailSubtitle = safeText(mail.message, 'SMTP-Status unbekannt');
+  const mailSubtitle =
+    mail.configured === true && mail.status === 'ok' ?
+      safeText(mail.message, 'SMTP konfiguriert')
+    : safeText(mail.message, 'SMTP-Status unbekannt');
 
   const paymentsValue =
     payments.configured === false ? 'Nicht konfiguriert'

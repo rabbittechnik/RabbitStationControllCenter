@@ -10,7 +10,7 @@ import type {
 } from '../types.js';
 import {
   mapSystemInfoFromHealth,
-  normalizeAdminHealthPayload,
+  normalizeHealthResponse,
 } from './healthNormalize.js';
 import { enrichLogs } from './logFormat.js';
 
@@ -44,12 +44,17 @@ type MainLog = {
 };
 
 export function mapHealth(
-  health: Record<string, unknown>,
-  backups: { configured?: boolean; lastBackup?: string | null; message?: string },
+  health: Record<string, unknown> | unknown,
+  backups: {
+    configured?: boolean;
+    lastBackup?: string | null;
+    message?: string;
+    lastBackupStatus?: string;
+  },
   responseTimeMs: number,
   apiReachable: boolean,
 ): HealthResponse {
-  return normalizeAdminHealthPayload(health, backups, responseTimeMs, apiReachable);
+  return normalizeHealthResponse(health, backups, responseTimeMs, apiReachable);
 }
 
 function resolveStatus(t: MainTenant): string {

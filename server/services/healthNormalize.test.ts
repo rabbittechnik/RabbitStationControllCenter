@@ -1,38 +1,108 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  classifyMailForDisplay,
+  classifyPaymentsForDisplay,
   databaseVersionLabel,
   mapSystemInfoFromHealth,
-  normalizeAdminHealthPayload,
+  normalizeHealthResponse,
+  unwrapHealthPayload,
 } from './healthNormalize.js';
+import { computeOverallDisplayStatus } from './healthDisplay.js';
+import type { BackupStatus } from '../types.js';
 
-describe('normalizeAdminHealthPayload', () => {
-  it('maps nested database object with connections', () => {
-    const health = normalizeAdminHealthPayload(
-      {
-        overallStatus: 'ok',
-        checkedAt: '2026-05-19T10:00:00.000Z',
-        app: { status: 'ok', message: 'RabbitStation Haupt-App online' },
-        api: { status: 'ok' },
-        database: { status: 'ok', connections: 23 },
-        mail: { status: 'warning', message: 'SMTP not configured' },
-        payments: { status: 'warning', message: 'Payment provider not configured' },
-        backups: { status: 'warning', message: 'Backup system not configured' },
-        storage: { status: 'ok' },
-        uptime: '12 Tage, 4 Std.',
-      },
-      { configured: false },
-      86,
+const sampleEnvelope = {
+  ok: true,
+  data: {
+    overallStatus: 'warning',
+    checkedAt: '2026-05-19T18:33:32.421Z',
+    app: { status: 'ok', message: 'RabbitStation Haupt-App online' },
+    api: { status: 'ok' },
+    database: { status: 'ok', connections: 1 },
+    mail: { status: 'ok' },
+    payments: { status: 'warning', message: 'Payment provider not configured' },
+    backups: { status: 'warning', message: 'Backup system not configured' },
+    storage: { status: 'ok' },
+    uptime: '71 Tage, 18 Std.',
+    environment: 'production',
+    version: '1.0.0',
+  },
+};
+
+describe('unwrapHealthPayload', () => {
+  it('reads health from { ok: true, data: {...} }', () => {
+    const inner = unwrapHealthPayload(sampleEnvelope);
+    assert.equal(inner.overallStatus, 'warning');
+    assert.equal((inner.mail as { status: string }).status, 'ok');
+    assert.equal(inner.uptime, '71 Tage, 18 Std.');
+  });
+});
+
+describe('normalizeHealthResponse', () => {
+  it('maps wrapped API payload with correct mail and optional systems', () => {
+    const health = normalizeHealthResponse(
+      sampleEnvelope,
+      { configured: false, message: 'Backup system not configured' },
+      42,
       true,
     );
 
-    assert.equal(health.database.status, 'ok');
-    assert.equal(health.database.connections, 23);
-    assert.equal(health.uptimeLabel, '12 Tage, 4 Std.');
+    assert.equal(health.mail.status, 'ok');
+    assert.equal(health.mail.configured, true);
+    assert.equal(health.mail.message, 'SMTP konfiguriert');
+    assert.equal(health.payments.configured, false);
+    assert.equal(health.payments.message, 'Zahlungssystem noch nicht angebunden');
+    assert.equal(health.uptimeLabel, '71 Tage, 18 Std.');
+    assert.equal(health.database.connections, 1);
+  });
+
+  it('does not treat mail.status ok as not configured without message', () => {
+    const mail = classifyMailForDisplay({ status: 'ok' });
+    assert.equal(mail.configured, true);
+    assert.equal(mail.displayValue, 'OK');
+    assert.equal(mail.displaySubtitle, 'SMTP konfiguriert');
+  });
+
+  it('shows payments as not configured for provider message', () => {
+    const pay = classifyPaymentsForDisplay({
+      status: 'warning',
+      message: 'Payment provider not configured',
+    });
+    assert.equal(pay.configured, false);
+    assert.equal(pay.displayValue, 'Nicht konfiguriert');
+  });
+});
+
+describe('computeOverallDisplayStatus', () => {
+  it('shows partial not outage when only optional systems are not configured', () => {
+    const health = normalizeHealthResponse(
+      sampleEnvelope,
+      { configured: false, message: 'Backup system not configured' },
+      10,
+      true,
+    );
+    const backups: BackupStatus = {
+      lastBackupAt: '',
+      lastBackupStatus: 'not_configured',
+      nextBackupAt: '',
+      sizeBytes: 0,
+      configured: false,
+      message: 'Backup system not configured',
+    };
+    const result = computeOverallDisplayStatus(health, backups, []);
+    assert.notEqual(result.label, 'outage');
+    assert.equal(result.label, 'partial');
   });
 });
 
 describe('mapSystemInfoFromHealth', () => {
+  it('reads environment and version from wrapped payload', () => {
+    const info = mapSystemInfoFromHealth(sampleEnvelope);
+    assert.equal(info.environment, 'production');
+    assert.equal(info.version, '1.0.0');
+    assert.equal(info.uptime, '71 Tage, 18 Std.');
+  });
+
   it('does not pass database object as databaseVersion string field', () => {
     const info = mapSystemInfoFromHealth({
       database: { status: 'ok', connections: 23 },
@@ -41,7 +111,6 @@ describe('mapSystemInfoFromHealth', () => {
     });
     assert.equal(typeof info.databaseVersion, 'string');
     assert.match(info.databaseVersion, /23/);
-    assert.equal(info.uptime, '5 Tage, 1 Std.');
   });
 });
 
