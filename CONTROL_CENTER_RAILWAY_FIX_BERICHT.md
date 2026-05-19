@@ -17,7 +17,8 @@ Der aktuelle Code nutzte bereits `resolveClientDist()` → `../client` (= `dist/
 | Datei | Änderung |
 |-------|----------|
 | `server/index.ts` | `GET /health`, explizites `GET /`, SPA-Fallback gehärtet, JSON-404 für unbekannte `/api/*`-Pfade |
-| `railway.toml` | `buildCommand = "npm ci --include=dev && npm run build"` |
+| `railway.toml` | `buildCommand = "npm run build"` (kein zweites `npm ci`) |
+| `railpack.json` | Install: `npm ci --include=dev` (Vite/TypeScript für Build) |
 | `.env.example` | Hinweis auf Deploy-Checks für `/` und `/health` |
 
 ## Routen nach Deploy
@@ -36,11 +37,16 @@ npm run build          # tsc + vite → dist/client
 npm start              # node dist/server/index.js
 ```
 
-Railway Build:
+Railway Build (zwei Schritte, kein doppeltes `npm ci` im Build):
 
 ```bash
-npm ci --include=dev && npm run build
+# Install (railpack.json)
+npm ci --include=dev
+# Build (railway.toml)
+npm run build
 ```
+
+**Hinweis:** Ein zweites `npm ci` im `buildCommand` führte zu `EBUSY: rmdir node_modules/.vite` (Railpack-Cache). Nur einmal installieren.
 
 ## Lokale Verifikation
 

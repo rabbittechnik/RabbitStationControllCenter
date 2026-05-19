@@ -1,6 +1,8 @@
 [build]
 builder = "railpack"
-buildCommand = "npm ci --include=dev && npm run build"
+# Railpack führt bereits „npm ci“ im Install-Schritt aus (siehe railpack.json: --include=dev).
+# Kein zweites npm ci hier – vermeidet EBUSY auf node_modules/.vite (Railpack-Cache).
+buildCommand = "npm run build"
 
 [deploy]
 startCommand = "npm start"
