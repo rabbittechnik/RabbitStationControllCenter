@@ -51,6 +51,10 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', service: 'rabbitstation-api' });
 });
 
+app.get('/health', (_req, res) => {
+  res.json({ status: 'ok', service: 'RabbitStation Control Center' });
+});
+
 function resolveClientDist(): string {
   const candidates = [
     path.join(__dirname, '../client'),
@@ -69,9 +73,7 @@ if (!fs.existsSync(indexHtml)) {
   console.error(`[startup] Frontend fehlt: ${indexHtml} (bitte npm run build ausführen)`);
 }
 
-app.use(express.static(clientDist));
-app.get('*', (req, res, next) => {
-  if (req.path.startsWith('/api')) return next();
+function sendSpaIndex(res: express.Response, next: express.NextFunction) {
   if (!fs.existsSync(indexHtml)) {
     res.status(503).send('Frontend nicht gebaut. Bitte Deploy-Logs prüfen (npm run build).');
     return;
@@ -79,6 +81,25 @@ app.get('*', (req, res, next) => {
   res.sendFile(indexHtml, (err) => {
     if (err) next(err);
   });
+}
+
+app.use(express.static(clientDist));
+
+app.get('/', (req, res, next) => {
+  sendSpaIndex(res, next);
+});
+
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api')) return next();
+  sendSpaIndex(res, next);
+});
+
+app.use((req, res) => {
+  if (req.path.startsWith('/api')) {
+    res.status(404).json({ ok: false, error: 'Not found', path: req.originalUrl });
+    return;
+  }
+  res.status(404).send('Not found');
 });
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
