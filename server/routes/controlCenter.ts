@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuth, requireSaasAdmin } from '../middleware/auth.js';
 import {
+  buildErrorMeta,
   fetchLiveBackups,
   fetchLiveHealth,
   fetchLiveLogs,
@@ -8,32 +9,33 @@ import {
   fetchLiveSecurity,
   fetchLiveSubscriptions,
   fetchLiveTenants,
-  loadDemoOverview,
 } from '../services/controlCenterDataService.js';
-import { getRabbitStationConfig, RabbitStationApiError } from '../services/rabbitStationApiClient.js';
+import {
+  getConfigStatusDetails,
+  getRabbitStationConfig,
+  RabbitStationApiError,
+} from '../services/rabbitStationApiClient.js';
 
 const router = Router();
 router.use(requireAuth, requireSaasAdmin);
 
 function handleError(res: import('express').Response, e: unknown) {
+  const meta = buildErrorMeta(e instanceof Error ? e.message : 'Unbekannter Fehler');
   if (e instanceof RabbitStationApiError) {
     const status =
       e.code === 'config_missing' ? 503
       : e.code === 'unauthorized' || e.code === 'forbidden' ? e.status ?? 403
       : e.code === 'timeout' || e.code === 'network_error' ? 502
+      : e.code === 'not_found' ? 502
       : 500;
-    return res.status(status).json({ error: e.message, code: e.code });
+    return res.status(status).json({ error: e.message, code: e.code, meta });
   }
   const msg = e instanceof Error ? e.message : 'Interner Fehler';
-  return res.status(500).json({ error: msg });
+  return res.status(500).json({ error: msg, meta });
 }
 
 router.get('/config-status', (_req, res) => {
-  const cfg = getRabbitStationConfig();
-  res.json({
-    apiConfigured: cfg.ready,
-    error: cfg.ready ? null : cfg.error,
-  });
+  res.json(getConfigStatusDetails());
 });
 
 router.get('/overview', async (_req, res) => {
@@ -47,15 +49,12 @@ router.get('/overview', async (_req, res) => {
 
 router.get('/health', async (_req, res) => {
   try {
-    const cfg = getRabbitStationConfig();
-    if (!cfg.ready) {
-      const demo = await loadDemoOverview(cfg.error);
-      return res.json({ ...demo.data.health, meta: demo.meta });
-    }
     const bundle = await fetchLiveHealth();
     res.json({
       ...bundle.health,
-      meta: { source: 'live' as const, apiConfigured: true },
+      backups: bundle.backups,
+      systemInfo: bundle.systemInfo,
+      meta: { source: 'live' as const, apiConfigured: true, apiUrlSet: true, tokenSet: true },
     });
   } catch (e) {
     handleError(res, e);
@@ -64,30 +63,31 @@ router.get('/health', async (_req, res) => {
 
 router.get('/tenants', async (req, res) => {
   try {
-    const cfg = getRabbitStationConfig();
-    if (!cfg.ready) {
-      const demo = await loadDemoOverview(cfg.error);
-      let tenants = demo.data.tenants;
-      const search = (req.query.search as string)?.toLowerCase() ?? '';
-      if (search) tenants = tenants.filter((t) => t.name.toLowerCase().includes(search));
-      return res.json({ tenants, meta: demo.meta, error: 'Tenants konnten nicht von der Haupt-App geladen werden.' });
-    }
     const { tenants } = await fetchLiveTenants();
     const search = (req.query.search as string)?.toLowerCase() ?? '';
-    const filtered = search
-      ? tenants.filter((t) => t.name.toLowerCase().includes(search))
-      : tenants;
-    if (filtered.length === 0) {
-      return res.json({
+    const filtered = search ? tenants.filter((t) => t.name.toLowerCase().includes(search)) : tenants;
+    res.json({
+      tenants: filtered,
+      meta: { source: 'live', apiConfigured: true, apiUrlSet: true, tokenSet: true },
+      message: filtered.length === 0 ? 'Keine Tenants gefunden.' : undefined,
+    });
+  } catch (e) {
+    if (e instanceof RabbitStationApiError && (e.code === 'unauthorized' || e.code === 'forbidden')) {
+      return res.status(e.status ?? 403).json({
+        error: 'Zugriff auf Haupt-App Admin-API verweigert. Token prüfen.',
+        code: e.code,
+        meta: buildErrorMeta(e.message),
         tenants: [],
-        meta: { source: 'live', apiConfigured: true },
-        message: tenants.length === 0 ? 'Keine Tenants gefunden.' : undefined,
       });
     }
-    res.json({ tenants: filtered, meta: { source: 'live', apiConfigured: true } });
-  } catch (e) {
     if (e instanceof RabbitStationApiError) {
-      return res.status(502).json({ error: 'Tenants konnten nicht geladen werden.', detail: e.message });
+      return res.status(502).json({
+        error: 'Tenants konnten nicht geladen werden.',
+        detail: e.message,
+        code: e.code,
+        meta: buildErrorMeta(e.message),
+        tenants: [],
+      });
     }
     handleError(res, e);
   }
@@ -95,13 +95,8 @@ router.get('/tenants', async (req, res) => {
 
 router.get('/subscriptions/summary', async (_req, res) => {
   try {
-    const cfg = getRabbitStationConfig();
-    if (!cfg.ready) {
-      const demo = await loadDemoOverview(cfg.error);
-      return res.json({ ...demo.data.subscriptions, meta: demo.meta });
-    }
     const { subscriptions } = await fetchLiveSubscriptions();
-    res.json({ ...subscriptions, meta: { source: 'live', apiConfigured: true } });
+    res.json({ ...subscriptions, meta: { source: 'live', apiConfigured: true, apiUrlSet: true, tokenSet: true } });
   } catch (e) {
     handleError(res, e);
   }
@@ -109,32 +104,31 @@ router.get('/subscriptions/summary', async (_req, res) => {
 
 router.get('/logs', async (req, res) => {
   try {
-    const cfg = getRabbitStationConfig();
     const limit = Math.min(100, Math.max(1, Number(req.query.limit ?? 50)));
-    if (!cfg.ready) {
-      const demo = await loadDemoOverview(cfg.error);
-      return res.json({ logs: demo.data.logs, meta: demo.meta });
-    }
     const { logs } = await fetchLiveLogs(limit);
     res.json({
       logs,
-      meta: { source: 'live', apiConfigured: true },
-      message: logs.length === 0 ? 'Keine aktuellen Meldungen.' : undefined,
+      meta: { source: 'live', apiConfigured: true, apiUrlSet: true, tokenSet: true },
+      message: logs.length === 0 ? 'Keine aktuellen Systemmeldungen.' : undefined,
     });
   } catch (e) {
+    if (e instanceof RabbitStationApiError) {
+      return res.status(502).json({
+        error: 'Logs konnten nicht geladen werden.',
+        detail: e.message,
+        code: e.code,
+        meta: buildErrorMeta(e.message),
+        logs: [],
+      });
+    }
     handleError(res, e);
   }
 });
 
 router.get('/security/summary', async (_req, res) => {
   try {
-    const cfg = getRabbitStationConfig();
-    if (!cfg.ready) {
-      const demo = await loadDemoOverview(cfg.error);
-      return res.json({ ...demo.data.security, meta: demo.meta });
-    }
     const { security } = await fetchLiveSecurity();
-    res.json({ ...security, meta: { source: 'live', apiConfigured: true } });
+    res.json({ ...security, meta: { source: 'live', apiConfigured: true, apiUrlSet: true, tokenSet: true } });
   } catch (e) {
     handleError(res, e);
   }
@@ -142,13 +136,8 @@ router.get('/security/summary', async (_req, res) => {
 
 router.get('/backups/status', async (_req, res) => {
   try {
-    const cfg = getRabbitStationConfig();
-    if (!cfg.ready) {
-      const demo = await loadDemoOverview(cfg.error);
-      return res.json({ ...demo.data.backups, meta: demo.meta });
-    }
     const { backups } = await fetchLiveBackups();
-    res.json({ ...backups, meta: { source: 'live', apiConfigured: true } });
+    res.json({ ...backups, meta: { source: 'live', apiConfigured: true, apiUrlSet: true, tokenSet: true } });
   } catch (e) {
     handleError(res, e);
   }

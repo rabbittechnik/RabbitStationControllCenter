@@ -4,9 +4,22 @@ import { formatCurrency } from '../../utils/format';
 
 interface SubscriptionRevenueCardsProps {
   data: SubscriptionSummary | null;
+  unavailable?: boolean;
 }
 
-export function SubscriptionRevenueCards({ data }: SubscriptionRevenueCardsProps) {
+export function SubscriptionRevenueCards({ data, unavailable }: SubscriptionRevenueCardsProps) {
+  if (unavailable) {
+    return (
+      <div>
+        <div className="mb-3">
+          <h3 className="text-sm font-semibold text-white">Abos &amp; Umsatz</h3>
+          <p className="text-xs text-slate-500">aktueller Monat</p>
+        </div>
+        <p className="glass-card p-4 text-sm text-slate-500">Nicht verfügbar</p>
+      </div>
+    );
+  }
+
   if (!data) {
     return (
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

@@ -10,15 +10,25 @@ import {
   mapTenants,
 } from './rabbitStationMappers.js';
 import type { ControlCenterMeta, OverviewData } from '../types.js';
-import { getDb } from '../db/index.js';
-import { runHealthCheck, getDemoHealthChart } from './health.js';
-import { APP_BUILD, APP_REGION, APP_VERSION } from '../constants.js';
-import os from 'os';
 
 export type LoadResult = {
   data: OverviewData;
   meta: ControlCenterMeta;
 };
+
+export function buildErrorMeta(lastError?: string): ControlCenterMeta {
+  const cfg = getRabbitStationConfig();
+  return {
+    source: 'error',
+    apiConfigured: cfg.ready,
+    apiUrlSet: cfg.ready ? true : cfg.apiUrlSet,
+    tokenSet: cfg.ready ? true : cfg.tokenSet,
+    message: cfg.ready
+      ? 'RabbitStation Haupt-App ist nicht verbunden.'
+      : 'Bitte RABBITSTATION_API_URL und CONTROL_CENTER_API_TOKEN konfigurieren.',
+    lastError,
+  };
+}
 
 async function fetchLiveHealthBundle(): Promise<{
   health: OverviewData['health'];
@@ -89,127 +99,37 @@ export async function fetchLiveBackups() {
   return { backups: mapBackupStatus(data) };
 }
 
+/** Lädt ausschließlich Live-Daten — kein Demo-Fallback. */
 export async function fetchLiveOverview(): Promise<LoadResult> {
   const cfg = getRabbitStationConfig();
   if (!cfg.ready) {
-    return loadDemoOverview(cfg.error);
+    throw new RabbitStationApiError(cfg.error, 'config_missing');
   }
 
-  try {
-    const [healthBundle, tenantsRes, subsRes, logsRes, securityRes] = await Promise.all([
-      fetchLiveHealthBundle(),
-      fetchLiveTenants(),
-      fetchLiveSubscriptions(),
-      fetchLiveLogs(30),
-      fetchLiveSecurity(),
-    ]);
-
-    return {
-      meta: { source: 'live', apiConfigured: true },
-      data: {
-        health: healthBundle.health,
-        backups: healthBundle.backups,
-        systemInfo: healthBundle.systemInfo,
-        tenants: tenantsRes.tenants,
-        subscriptions: subsRes.subscriptions,
-        logs: logsRes.logs,
-        security: securityRes.security,
-        charts: emptyCharts(),
-      },
-    };
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Unbekannter Fehler';
-    const demo = await loadDemoOverview(msg);
-    return {
-      ...demo,
-      meta: {
-        source: 'demo',
-        apiConfigured: true,
-        message: 'Demo-Modus – Haupt-App nicht erreichbar oder Token ungültig',
-        lastError: msg,
-      },
-    };
-  }
-}
-
-export async function loadDemoOverview(reason?: string): Promise<LoadResult> {
-  const health = await runHealthCheck();
-  const db = getDb();
-  const logs = db
-    .prepare(
-      `SELECT id, tenant_id, severity, category, action, message, created_at
-       FROM system_logs ORDER BY created_at DESC LIMIT 10`,
-    )
-    .all() as OverviewData['logs'];
-  const tenants = db.prepare(`SELECT * FROM demo_tenants ORDER BY last_activity_minutes ASC`).all() as OverviewData['tenants'];
-
-  const cfg = getRabbitStationConfig();
+  const [healthBundle, tenantsRes, subsRes, logsRes, securityRes] = await Promise.all([
+    fetchLiveHealthBundle(),
+    fetchLiveTenants(),
+    fetchLiveSubscriptions(),
+    fetchLiveLogs(30),
+    fetchLiveSecurity(),
+  ]);
 
   return {
     meta: {
-      source: 'demo',
-      apiConfigured: cfg.ready,
-      message: reason ? `Demo-Modus: ${reason}` : 'Demo-Modus',
+      source: 'live',
+      apiConfigured: true,
+      apiUrlSet: true,
+      tokenSet: true,
     },
     data: {
-      health,
-      logs,
-      tenants,
-      subscriptions: {
-        activeTenants: 24,
-        activeTenantsTrend: '+2 seit letztem Monat',
-        trials: 6,
-        trialsTrend: '-1 seit letztem Monat',
-        activeSubscriptions: 21,
-        activeSubscriptionsTrend: '+3 seit letztem Monat',
-        monthlyRevenue: 0,
-        monthlyRevenueCurrency: 'EUR',
-        monthlyRevenueTrend: 'Noch keine Zahlungsdaten verfügbar',
-      },
-      security: {
-        failedLogins24h: 7,
-        activeSupportSessions: 0,
-        roleChanges24h: 2,
-      },
-      backups: getDemoBackupStatus(db),
-      systemInfo: getDemoSystemInfo(),
-      charts: getDemoHealthChart('24h'),
+      health: healthBundle.health,
+      backups: healthBundle.backups,
+      systemInfo: healthBundle.systemInfo,
+      tenants: tenantsRes.tenants,
+      subscriptions: subsRes.subscriptions,
+      logs: logsRes.logs,
+      security: securityRes.security,
+      charts: emptyCharts(),
     },
-  };
-}
-
-function getDemoBackupStatus(db: ReturnType<typeof getDb>) {
-  const last = db
-    .prepare(`SELECT * FROM backup_logs ORDER BY finished_at DESC LIMIT 1`)
-    .get() as { status: string; finished_at: string; size_bytes: number } | undefined;
-  const now = new Date();
-  const next = new Date(now);
-  next.setHours(22, 0, 0, 0);
-  if (next <= now) next.setDate(next.getDate() + 1);
-  return {
-    lastBackupAt: last?.finished_at ?? new Date().toISOString(),
-    lastBackupStatus: last?.status ?? 'success',
-    nextBackupAt: next.toISOString(),
-    sizeBytes: last?.size_bytes ?? 0,
-    configured: true,
-  };
-}
-
-function getDemoSystemInfo() {
-  const uptimeSec = os.uptime();
-  const days = Math.floor(uptimeSec / 86400);
-  const hours = Math.floor((uptimeSec % 86400) / 3600);
-  return {
-    environment: 'Demo',
-    region: `${APP_REGION} (Frankfurt)`,
-    version: APP_VERSION,
-    build: APP_BUILD,
-    serverTime: new Date().toISOString(),
-    uptime: `${days} Tage, ${hours} Std.`,
-    systemLoadPercent: 0,
-    nodeVersion: process.version,
-    databaseVersion: 'SQLite (Demo)',
-    lastDeploy: 'Demo',
-    commitHash: 'demo',
   };
 }

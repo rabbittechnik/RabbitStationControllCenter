@@ -86,12 +86,14 @@ export interface BackupStatus {
   message?: string;
 }
 
-export type DataSourceKind = 'live' | 'demo';
+export type DataSourceKind = 'live' | 'error';
 
 export interface ControlCenterMeta {
   source: DataSourceKind;
   message?: string;
   apiConfigured: boolean;
+  apiUrlSet?: boolean;
+  tokenSet?: boolean;
   lastError?: string;
 }
 

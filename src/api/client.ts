@@ -2,6 +2,18 @@ import type { ControlCenterMeta, ControlCenterOverviewResponse, HealthResponse }
 
 const BASE = '/api';
 
+export class ApiRequestError extends Error {
+  meta?: ControlCenterMeta;
+  code?: string;
+
+  constructor(message: string, meta?: ControlCenterMeta, code?: string) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.meta = meta;
+    this.code = code;
+  }
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     credentials: 'include',
@@ -9,12 +21,21 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     ...options,
   });
 
+  const body = (await res.json().catch(() => ({}))) as T & {
+    error?: string;
+    meta?: ControlCenterMeta;
+    code?: string;
+  };
+
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error((err as { error?: string }).error ?? 'Anfrage fehlgeschlagen');
+    throw new ApiRequestError(
+      body.error ?? res.statusText ?? 'Anfrage fehlgeschlagen',
+      body.meta,
+      body.code,
+    );
   }
 
-  return res.json() as Promise<T>;
+  return body as T;
 }
 
 export const api = {
@@ -27,22 +48,19 @@ export const api = {
   logout: () => request<{ ok: boolean }>('/auth/logout', { method: 'POST' }),
 
   getConfigStatus: () =>
-    request<{ apiConfigured: boolean; error: string | null }>('/control-center/config-status'),
+    request<{
+      apiConfigured: boolean;
+      apiUrlSet: boolean;
+      tokenSet: boolean;
+      error: string | null;
+    }>('/control-center/config-status'),
 
   getOverview: () => request<ControlCenterOverviewResponse>('/control-center/overview'),
 
   getHealth: () =>
     request<HealthResponse & { meta?: ControlCenterMeta }>('/control-center/health'),
 
-  runHealthCheck: async () => {
-    const h = await api.getHealth();
-    return h;
-  },
-
-  getCharts: (period: string) =>
-    request<{ period: string; data: import('../types').ChartPoint[] }>(
-      `/admin/charts?period=${period}`,
-    ),
+  runHealthCheck: async () => api.getHealth(),
 
   getLogs: (severity?: string) =>
     request<{ logs: import('../types').SystemLog[]; meta?: ControlCenterMeta; message?: string }>(
@@ -54,7 +72,17 @@ export const api = {
       `/control-center/tenants${search ? `?search=${encodeURIComponent(search)}` : ''}`,
     ),
 
-  runBackupCheck: () => request<unknown>('/control-center/backups/status'),
+  getSubscriptions: () =>
+    request<import('../types').SubscriptionSummary & { meta?: ControlCenterMeta }>(
+      '/control-center/subscriptions/summary',
+    ),
+
+  getSecurity: () =>
+    request<import('../types').SecuritySummary & { meta?: ControlCenterMeta }>(
+      '/control-center/security/summary',
+    ),
+
+  runBackupCheck: () => request<import('../types').BackupStatus>('/control-center/backups/status'),
 
   startSupportSession: (tenantId: string, reason?: string) =>
     request<{ sessionId: number }>(`/admin/tenants/${tenantId}/support-session/start`, {

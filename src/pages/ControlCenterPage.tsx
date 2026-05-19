@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api } from '../api/client';
+import { ApiRequestError, api } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
-import type { ChartPoint, ControlCenterMeta, OverviewData, Tenant } from '../types';
+import type { ControlCenterMeta, OverviewData, Tenant } from '../types';
 import { ControlCenterSidebar } from '../components/control-center/ControlCenterSidebar';
 import { ControlCenterHeader } from '../components/control-center/ControlCenterHeader';
 import { DataSourceBanner } from '../components/control-center/DataSourceBanner';
@@ -16,12 +16,26 @@ import { SupportAccessModal } from '../components/control-center/SupportAccessMo
 
 const AUTO_REFRESH_MS = 45_000;
 
+function metaFromConfigStatus(cfg: {
+  apiConfigured: boolean;
+  apiUrlSet: boolean;
+  tokenSet: boolean;
+  error: string | null;
+}): ControlCenterMeta {
+  return {
+    source: cfg.apiConfigured ? 'live' : 'error',
+    apiConfigured: cfg.apiConfigured,
+    apiUrlSet: cfg.apiUrlSet,
+    tokenSet: cfg.tokenSet,
+    message: cfg.error ?? undefined,
+    lastError: cfg.error ?? undefined,
+  };
+}
+
 export function ControlCenterPage() {
   const { user } = useAuth();
   const [data, setData] = useState<OverviewData | null>(null);
   const [meta, setMeta] = useState<ControlCenterMeta | null>(null);
-  const [charts, setCharts] = useState<ChartPoint[]>([]);
-  const [chartPeriod, setChartPeriod] = useState<'24h' | '7d' | '30d'>('24h');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [backupChecking, setBackupChecking] = useState(false);
@@ -32,87 +46,92 @@ export function ControlCenterPage() {
   const [supportTenant, setSupportTenant] = useState<Tenant | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const loadOverview = useCallback(async () => {
-    setLoadError(null);
-    const overview = await api.getOverview();
-    const { meta: m, ...rest } = overview;
-    setMeta(m);
-    setData(rest);
-    setCharts(rest.charts);
-  }, []);
+  const isLive = meta?.source === 'live' && meta.apiConfigured;
 
-  const loadCharts = useCallback(async (period: '24h' | '7d' | '30d') => {
-    const res = await api.getCharts(period);
-    setCharts(res.data);
-    setChartPeriod(period);
+  const loadAll = useCallback(async () => {
+    setLoadError(null);
+    const cfg = await api.getConfigStatus();
+    if (!cfg.apiConfigured) {
+      setMeta(metaFromConfigStatus(cfg));
+      setData(null);
+      return;
+    }
+
+    try {
+      const overview = await api.getOverview();
+      const { meta: m, ...rest } = overview;
+      setMeta(m);
+      setData(rest);
+    } catch (e) {
+      if (e instanceof ApiRequestError && e.meta) {
+        setMeta(e.meta);
+      } else {
+        setMeta({
+          source: 'error',
+          apiConfigured: true,
+          apiUrlSet: cfg.apiUrlSet,
+          tokenSet: cfg.tokenSet,
+          message: 'RabbitStation Haupt-App ist nicht verbunden.',
+          lastError: e instanceof Error ? e.message : 'Unbekannter Fehler',
+        });
+      }
+      setData(null);
+      setLoadError(e instanceof Error ? e.message : 'Daten konnten nicht geladen werden.');
+    }
   }, []);
 
   useEffect(() => {
-    (async () => {
+    void (async () => {
       try {
-        await loadOverview();
-      } catch (e) {
-        setLoadError(e instanceof Error ? e.message : 'Daten konnten nicht geladen werden.');
-        console.error(e);
+        await loadAll();
       } finally {
         setLoading(false);
       }
     })();
-  }, [loadOverview]);
+  }, [loadAll]);
 
   useEffect(() => {
     const id = window.setInterval(() => {
-      void loadOverview().catch(() => {
-        /* Banner zeigt Demo/Live-Fehler */
-      });
+      void loadAll().catch(() => undefined);
     }, AUTO_REFRESH_MS);
     return () => window.clearInterval(id);
-  }, [loadOverview]);
+  }, [loadAll]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await loadOverview();
-    } catch (e) {
-      setLoadError(e instanceof Error ? e.message : 'Aktualisierung fehlgeschlagen.');
+      await loadAll();
     } finally {
       setRefreshing(false);
     }
   };
 
   const handleBackupCheck = async () => {
+    if (!isLive) return;
     setBackupChecking(true);
     try {
       const backups = await api.runBackupCheck();
-      setData((prev) =>
-        prev ?
-          {
-            ...prev,
-            backups: {
-              lastBackupAt: (backups as { lastBackupAt?: string }).lastBackupAt ?? prev.backups.lastBackupAt,
-              lastBackupStatus:
-                (backups as { lastBackupStatus?: string }).lastBackupStatus ?? prev.backups.lastBackupStatus,
-              nextBackupAt: (backups as { nextBackupAt?: string }).nextBackupAt ?? prev.backups.nextBackupAt,
-              sizeBytes: (backups as { sizeBytes?: number }).sizeBytes ?? prev.backups.sizeBytes,
-              configured: (backups as { configured?: boolean }).configured,
-              message: (backups as { message?: string }).message,
-            },
-          }
-        : prev,
-      );
+      setData((prev) => (prev ? { ...prev, backups } : prev));
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : 'Backup-Status konnte nicht geladen werden.');
     } finally {
       setBackupChecking(false);
     }
   };
 
   const handleSupportConfirm = async (reason: string) => {
-    if (!supportTenant) return;
+    if (!supportTenant || !isLive) return;
     await api.startSupportSession(supportTenant.id, reason);
-    await loadOverview();
+    await loadAll();
     setSupportTenant(null);
   };
 
   if (!user) return null;
+
+  const tenantEmpty =
+    !isLive ? 'Tenants konnten nicht geladen werden.'
+    : (data?.tenants?.length ?? 0) === 0 ? 'Keine Tenants gefunden.'
+    : undefined;
 
   return (
     <div className="flex h-screen overflow-hidden bg-navy-950">
@@ -121,80 +140,74 @@ export function ControlCenterPage() {
       >
         <ControlCenterSidebar collapsed={sidebarCollapsed} />
       </div>
-      {mobileSidebar && (
+      {mobileSidebar ?
         <button
           type="button"
           className="fixed inset-0 z-30 bg-black/50 lg:hidden"
           onClick={() => setMobileSidebar(false)}
         />
-      )}
-
+      : null}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <ControlCenterHeader
           user={user}
-          serverTime={data?.systemInfo.serverTime}
-          overallStatus={data?.health.overallStatus}
+          serverTime={isLive ? data?.systemInfo.serverTime : undefined}
+          overallStatus={isLive ? data?.health.overallStatus : undefined}
           search={search}
           onSearchChange={setSearch}
           onRefresh={handleRefresh}
           refreshing={refreshing}
           onMenuClick={() => setMobileSidebar(true)}
         />
-
         <main className="flex-1 overflow-y-auto p-4 lg:p-6">
           <DataSourceBanner meta={meta} onRetry={handleRefresh} retrying={refreshing} />
-
           {loadError ?
             <div className="mb-4 rounded-lg border border-neon-red/40 bg-neon-red/10 px-4 py-3 text-sm text-red-200">
               {loadError}
             </div>
           : null}
-
           <div className="mb-4">
-            <SystemStatusCards health={data?.health ?? null} loading={loading} />
+            <SystemStatusCards health={isLive ? (data?.health ?? null) : null} loading={loading} />
           </div>
-
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_320px]">
             <div className="space-y-4">
-              <SystemHealthChart
-                data={charts}
-                period={chartPeriod}
-                onPeriodChange={(p) => loadCharts(p)}
-              />
+              {isLive && (data?.charts?.length ?? 0) > 0 ?
+                <SystemHealthChart
+                  data={data!.charts}
+                  period="24h"
+                  onPeriodChange={() => undefined}
+                />
+              : !isLive && !loading ?
+                <p className="glass-card p-4 text-sm text-slate-500">Systemgesundheit: Nicht verfügbar</p>
+              : null}
               <TenantOverviewTable
-                tenants={data?.tenants ?? []}
+                tenants={isLive ? (data?.tenants ?? []) : []}
                 search={search}
                 onSupport={setSupportTenant}
-                emptyMessage={
-                  meta?.source === 'live' && (data?.tenants?.length ?? 0) === 0 ?
-                    'Keine Tenants gefunden.'
-                  : undefined
-                }
+                emptyMessage={tenantEmpty}
               />
-              <SubscriptionRevenueCards data={data?.subscriptions ?? null} />
+              <SubscriptionRevenueCards
+                data={isLive ? (data?.subscriptions ?? null) : null}
+                unavailable={!isLive && !loading}
+              />
             </div>
-
             <div className="space-y-4">
               <LogsAndAlertsPanel
-                logs={data?.logs ?? []}
+                logs={isLive ? (data?.logs ?? []) : []}
                 severityFilter={severityFilter}
                 onSeverityFilter={setSeverityFilter}
-                emptyMessage={
-                  (data?.logs?.length ?? 0) === 0 ? 'Keine aktuellen Meldungen.' : undefined
-                }
+                emptyMessage={logsEmpty}
               />
               <BackupSecurityPanel
-                backups={data?.backups ?? null}
-                security={data?.security ?? null}
+                backups={isLive ? (data?.backups ?? null) : null}
+                security={isLive ? (data?.security ?? null) : null}
                 onRunBackupCheck={handleBackupCheck}
                 checking={backupChecking}
               />
-              <SystemInfoPanel info={data?.systemInfo ?? null} />
+              <SystemInfoPanel info={isLive ? (data?.systemInfo ?? null) : null} />
             </div>
           </div>
         </main>
       </div>
-
       <SupportAccessModal
         tenant={supportTenant}
         open={!!supportTenant}

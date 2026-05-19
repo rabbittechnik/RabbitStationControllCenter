@@ -2,7 +2,7 @@ const TIMEOUT_MS = 10_000;
 
 export type RabbitStationConfig =
   | { ready: true; baseUrl: string; token: string }
-  | { ready: false; error: string };
+  | { ready: false; error: string; apiUrlSet: boolean; tokenSet: boolean };
 
 export class RabbitStationApiError extends Error {
   readonly code: string;
@@ -17,16 +17,38 @@ export class RabbitStationApiError extends Error {
 }
 
 export function getRabbitStationConfig(): RabbitStationConfig {
+  const apiUrlSet = Boolean(process.env.RABBITSTATION_API_URL?.trim());
+  const tokenSet = Boolean(process.env.CONTROL_CENTER_API_TOKEN?.trim());
   const baseUrl = process.env.RABBITSTATION_API_URL?.trim().replace(/\/$/, '');
   const token = process.env.CONTROL_CENTER_API_TOKEN?.trim();
 
-  if (!baseUrl) {
-    return { ready: false, error: 'RabbitStation API URL ist nicht konfiguriert.' };
+  if (!apiUrlSet) {
+    return {
+      ready: false,
+      apiUrlSet: false,
+      tokenSet,
+      error: 'RabbitStation API URL fehlt. Bitte Railway-Variable RABBITSTATION_API_URL setzen.',
+    };
   }
-  if (!token) {
-    return { ready: false, error: 'Control-Center API Token fehlt.' };
+  if (!tokenSet) {
+    return {
+      ready: false,
+      apiUrlSet: true,
+      tokenSet: false,
+      error: 'Control-Center API Token fehlt. Bitte Railway-Variable CONTROL_CENTER_API_TOKEN setzen.',
+    };
   }
-  return { ready: true, baseUrl, token };
+  return { ready: true, baseUrl: baseUrl!, token: token! };
+}
+
+export function getConfigStatusDetails() {
+  const cfg = getRabbitStationConfig();
+  return {
+    apiConfigured: cfg.ready,
+    apiUrlSet: cfg.ready ? true : cfg.apiUrlSet,
+    tokenSet: cfg.ready ? true : cfg.tokenSet,
+    error: cfg.ready ? null : cfg.error,
+  };
 }
 
 type ApiEnvelope<T> = { ok: true; data: T } | { ok: false; error: string; code?: string };
@@ -40,7 +62,6 @@ export async function rabbitStationFetch<T>(apiPath: string): Promise<T> {
   const url = `${cfg.baseUrl}${apiPath.startsWith('/') ? apiPath : `/${apiPath}`}`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  const started = Date.now();
 
   try {
     const res = await fetch(url, {
@@ -67,13 +88,16 @@ export async function rabbitStationFetch<T>(apiPath: string): Promise<T> {
           : `HTTP ${res.status}`;
       if (res.status === 401) {
         throw new RabbitStationApiError(
-          'Haupt-App hat den API-Token abgelehnt (401). Token prüfen oder in der Haupt-App Service-Auth aktivieren.',
+          'Zugriff auf Haupt-App Admin-API verweigert. Token prüfen.',
           'unauthorized',
           401,
         );
       }
       if (res.status === 403) {
-        throw new RabbitStationApiError('Keine Berechtigung auf der Haupt-App (403).', 'forbidden', 403);
+        throw new RabbitStationApiError('Zugriff auf Haupt-App Admin-API verweigert (403).', 'forbidden', 403);
+      }
+      if (res.status === 404) {
+        throw new RabbitStationApiError(`Admin-Route nicht gefunden: ${apiPath}`, 'not_found', 404);
       }
       if (res.status >= 500) {
         throw new RabbitStationApiError(`Haupt-App-Fehler: ${errMsg}`, 'server_error', res.status);
@@ -93,18 +117,11 @@ export async function rabbitStationFetch<T>(apiPath: string): Promise<T> {
   } catch (e) {
     if (e instanceof RabbitStationApiError) throw e;
     if (e instanceof Error && e.name === 'AbortError') {
-      throw new RabbitStationApiError(
-        'Haupt-App nicht erreichbar (Zeitüberschreitung).',
-        'timeout',
-      );
+      throw new RabbitStationApiError('Haupt-App nicht erreichbar (Zeitüberschreitung).', 'timeout');
     }
     const msg = e instanceof Error ? e.message : 'Unbekannter Fehler';
-    throw new RabbitStationApiError(
-      `Haupt-App nicht erreichbar: ${msg}`,
-      'network_error',
-    );
+    throw new RabbitStationApiError(`Haupt-App nicht erreichbar: ${msg}`, 'network_error');
   } finally {
     clearTimeout(timer);
-    void started;
   }
 }
