@@ -19,6 +19,7 @@ import {
 import type { ControlCenterMeta, OverviewData } from '../types.js';
 import { applyTenantActivityFromLogs } from './logFormat.js';
 import { refineHealthComponents } from './healthDisplay.js';
+import { sanitizeUserFacingError } from './displayErrors.js';
 
 export type LoadResult = {
   data: OverviewData;
@@ -35,7 +36,20 @@ export function buildErrorMeta(lastError?: string): ControlCenterMeta {
     message: cfg.ready
       ? 'RabbitStation Haupt-App ist nicht verbunden.'
       : 'Bitte RABBITSTATION_API_URL und CONTROL_CENTER_API_TOKEN konfigurieren.',
-    lastError,
+    lastError: lastError ? sanitizeUserFacingError(lastError) : undefined,
+  };
+}
+
+/** Haupt-App erreichbar, aber Anzeige/Mapping teilweise fehlgeschlagen. */
+export function buildMappingErrorMeta(technicalDetail?: string): ControlCenterMeta {
+  const cfg = getRabbitStationConfig();
+  return {
+    source: 'degraded',
+    apiConfigured: true,
+    apiUrlSet: cfg.ready ? true : cfg.apiUrlSet,
+    tokenSet: cfg.ready ? true : cfg.tokenSet,
+    message: 'Control-Center-Anzeige konnte Statusdaten nicht verarbeiten.',
+    lastError: technicalDetail ? sanitizeUserFacingError(technicalDetail) : undefined,
   };
 }
 
@@ -223,7 +237,8 @@ export async function fetchLiveOverview(): Promise<LoadResult> {
   try {
     health = refineHealthComponents(healthBundle.health, healthBundle.backups, logs);
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Unbekannter Fehler';
+    const raw = e instanceof Error ? e.message : 'Unbekannter Fehler';
+    const msg = sanitizeUserFacingError(raw);
     throw new Error(`Control-Center-Anzeige konnte Health-Daten nicht verarbeiten: ${msg}`);
   }
 

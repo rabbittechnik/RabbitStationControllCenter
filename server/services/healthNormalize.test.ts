@@ -6,9 +6,10 @@ import {
   databaseVersionLabel,
   mapSystemInfoFromHealth,
   normalizeHealthResponse,
+  normalizeMainAppHealth,
   unwrapHealthPayload,
 } from './healthNormalize.js';
-import { computeOverallDisplayStatus } from './healthDisplay.js';
+import { computeOverallDisplayStatus, refineHealthComponents } from './healthDisplay.js';
 import type { BackupStatus } from '../types.js';
 
 const sampleEnvelope = {
@@ -49,7 +50,7 @@ describe('normalizeHealthResponse', () => {
 
     assert.equal(health.mail.status, 'ok');
     assert.equal(health.mail.configured, true);
-    assert.equal(health.mail.message, 'SMTP konfiguriert');
+    assert.equal(health.mail.message, 'Mailversand konfiguriert');
     assert.equal(health.payments.configured, false);
     assert.equal(health.payments.message, 'Zahlungssystem noch nicht angebunden');
     assert.equal(health.uptimeLabel, '71 Tage, 18 Std.');
@@ -60,7 +61,7 @@ describe('normalizeHealthResponse', () => {
     const mail = classifyMailForDisplay({ status: 'ok' });
     assert.equal(mail.configured, true);
     assert.equal(mail.displayValue, 'OK');
-    assert.equal(mail.displaySubtitle, 'SMTP konfiguriert');
+    assert.equal(mail.displaySubtitle, 'Mailversand konfiguriert');
   });
 
   it('shows payments as not configured for provider message', () => {
@@ -134,7 +135,7 @@ describe('robust health variants', () => {
     );
     assert.equal(health.mail.status, 'ok');
     assert.equal(health.mail.configured, true);
-    assert.equal(health.mail.message, 'SMTP konfiguriert');
+    assert.equal(health.mail.message, 'Mailversand konfiguriert');
   });
 
   it('B) payments without configured field', () => {
@@ -186,5 +187,42 @@ describe('robust health variants', () => {
     assert.ok(health.payments);
     assert.ok(health.backups);
     assert.equal(typeof health.mail.configured, 'boolean');
+  });
+});
+
+describe('normalizeMainAppHealth', () => {
+  it('unwraps { ok, data } and fills missing messages', () => {
+    const raw = normalizeMainAppHealth({
+      ok: true,
+      data: {
+        overallStatus: 'warning',
+        app: { status: 'ok' },
+        mail: { status: 'ok' },
+        payments: { status: 'warning' },
+      },
+    });
+    assert.equal((raw.app as { message: string }).message, 'Keine App-Meldung verfügbar');
+    assert.equal((raw.mail as { message: string }).message, 'Mailversand konfiguriert');
+    assert.equal((raw.payments as { message: string }).message, 'Keine Zahlungs-Meldung verfügbar');
+  });
+
+  it('uses custom mail message when provided', () => {
+    const raw = normalizeMainAppHealth({
+      mail: { status: 'ok', message: 'SMTP konfiguriert und Versand erfolgreich getestet' },
+    });
+    assert.match((raw.mail as { message: string }).message, /getestet/);
+  });
+});
+
+describe('refineHealthComponents', () => {
+  it('does not crash when uptime or backups are incomplete', () => {
+    const health = normalizeHealthResponse(
+      { app: { status: 'ok' }, api: { status: 'ok' }, database: { status: 'ok' }, storage: { usedPercent: 1, status: 'ok' } },
+      {},
+      5,
+      true,
+    );
+    const broken = { ...health, uptime: undefined } as unknown as typeof health;
+    assert.doesNotThrow(() => refineHealthComponents(broken, undefined, []));
   });
 });

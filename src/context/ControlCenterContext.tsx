@@ -10,6 +10,7 @@ import {
 import { api } from '../api/client';
 import { normalizeOverviewData } from '../data/controlCenterDefaults';
 import type { ControlCenterMeta, OverviewData } from '../types';
+import { sanitizeUserFacingError, technicalDetailLabel } from '../utils/displayErrors';
 
 const AUTO_REFRESH_MS = 45_000;
 
@@ -32,6 +33,8 @@ type ControlCenterContextValue = {
   backupChecking: boolean;
   loadError: string | null;
   isLive: boolean;
+  isDegraded: boolean;
+  technicalError: string | null;
   search: string;
   setSearch: (v: string) => void;
   refresh: () => Promise<void>;
@@ -75,11 +78,14 @@ export function ControlCenterProvider({ children }: { children: ReactNode }) {
   const [backupChecking, setBackupChecking] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [technicalError, setTechnicalError] = useState<string | null>(null);
 
   const isLive = meta?.source === 'live' && meta.apiConfigured === true;
+  const isDegraded = meta?.source === 'degraded';
 
   const loadAll = useCallback(async () => {
     setLoadError(null);
+    setTechnicalError(null);
 
     const cfgResult = await api.getConfigStatus();
     if (!cfgResult.ok) {
@@ -109,22 +115,24 @@ export function ControlCenterProvider({ children }: { children: ReactNode }) {
     if (!overviewResult.ok) {
       const code = overviewResult.error;
       if (code === 'health_mapping_error') {
-        setLoadError('Control-Center-Anzeige konnte Health-Daten nicht verarbeiten.');
-        setMeta({
-          source: 'live',
-          apiConfigured: true,
-          apiUrlSet: cfg.apiUrlSet,
-          tokenSet: cfg.tokenSet,
-          message: overviewResult.message,
-          lastError: overviewResult.message,
-        });
+        setLoadError('Statusdaten konnten nicht vollständig geladen werden.');
+        setTechnicalError(technicalDetailLabel(overviewResult.message) ?? null);
+        setMeta(
+          overviewResult.meta ?? {
+            source: 'degraded',
+            apiConfigured: true,
+            apiUrlSet: cfg.apiUrlSet,
+            tokenSet: cfg.tokenSet,
+            message: 'Control-Center-Anzeige konnte Statusdaten nicht verarbeiten.',
+          },
+        );
         setData(null);
         return;
       }
       if (code === 'unauthorized' || code === 'forbidden') {
         setLoadError('Keine Berechtigung oder Token ungültig');
       } else {
-        setLoadError(overviewResult.message);
+        setLoadError(sanitizeUserFacingError(overviewResult.message));
       }
       setMeta(metaFromApiFail(cfg, overviewResult.message, code));
       setData(null);
@@ -143,7 +151,9 @@ export function ControlCenterProvider({ children }: { children: ReactNode }) {
         await loadAll();
       } catch (e) {
         console.error('[ControlCenter] load failed', e);
-        setLoadError(e instanceof Error ? e.message : 'Daten konnten nicht geladen werden.');
+        setLoadError(
+          sanitizeUserFacingError(e instanceof Error ? e.message : 'Daten konnten nicht geladen werden.'),
+        );
       } finally {
         setLoading(false);
       }
@@ -174,7 +184,11 @@ export function ControlCenterProvider({ children }: { children: ReactNode }) {
       setData((prev) => (prev ? { ...prev, backups } : prev));
     } catch (e) {
       console.error('[ControlCenter] backup check failed', e);
-      setLoadError(e instanceof Error ? e.message : 'Backup-Status konnte nicht geladen werden.');
+      setLoadError(
+        sanitizeUserFacingError(
+          e instanceof Error ? e.message : 'Backup-Status konnte nicht geladen werden.',
+        ),
+      );
     } finally {
       setBackupChecking(false);
     }
@@ -190,6 +204,8 @@ export function ControlCenterProvider({ children }: { children: ReactNode }) {
       backupChecking,
       loadError,
       isLive,
+      isDegraded,
+      technicalError,
       search,
       setSearch,
       refresh,
@@ -204,6 +220,8 @@ export function ControlCenterProvider({ children }: { children: ReactNode }) {
       backupChecking,
       loadError,
       isLive,
+      isDegraded,
+      technicalError,
       search,
       refresh,
       runBackupCheck,

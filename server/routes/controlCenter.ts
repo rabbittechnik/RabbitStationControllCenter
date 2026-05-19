@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireAuth, requireSaasAdmin } from '../middleware/auth.js';
 import {
   buildErrorMeta,
+  buildMappingErrorMeta,
   fetchLiveBackups,
   fetchLiveHealth,
   fetchLiveLogs,
@@ -55,9 +56,9 @@ router.get('/overview', async (_req, res) => {
     const msg = e instanceof Error ? e.message : 'Unbekannter Fehler';
     if (msg.includes('Health-Daten nicht verarbeiten')) {
       return res.status(500).json({
-        error: msg,
+        error: 'Control-Center-Anzeige konnte Statusdaten nicht verarbeiten.',
         code: 'health_mapping_error',
-        meta: buildErrorMeta(msg),
+        meta: buildMappingErrorMeta(msg),
       });
     }
     handleError(res, e);

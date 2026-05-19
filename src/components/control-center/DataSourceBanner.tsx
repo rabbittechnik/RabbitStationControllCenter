@@ -22,6 +22,33 @@ export function DataSourceBanner({ meta, onRetry, retrying }: DataSourceBannerPr
     );
   }
 
+  if (meta.source === 'degraded' && meta.apiConfigured) {
+    return (
+      <div className="mb-4 rounded-lg border border-neon-orange/40 bg-neon-orange/10 px-4 py-3 text-sm text-orange-100">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-neon-orange">
+              {meta.message ?? 'Haupt-App verbunden, einzelne Statusdaten nicht vollständig verfügbar'}
+            </p>
+            {meta.lastError ?
+              <p className="mt-1 text-xs text-orange-200/80">Details: {meta.lastError}</p>
+            : null}
+          </div>
+          {onRetry ?
+            <button
+              type="button"
+              onClick={onRetry}
+              disabled={retrying}
+              className="shrink-0 rounded-lg border border-neon-cyan/40 px-3 py-1.5 text-xs font-medium text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-50"
+            >
+              {retrying ? 'Lädt…' : 'Erneut prüfen'}
+            </button>
+          : null}
+        </div>
+      </div>
+    );
+  }
+
   const title = !meta.apiConfigured ? 'Konfiguration unvollständig' : 'Haupt-App nicht verbunden';
 
   const body =

@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeOverallDisplayStatus } from './healthDisplay.js';
+import { computeOverallDisplayStatus, refineHealthComponents } from './healthDisplay.js';
+import { normalizeHealthResponse } from './healthNormalize.js';
 import type { BackupStatus, HealthResponse } from '../types.js';
 
 function baseHealth(overrides: Partial<HealthResponse> = {}): HealthResponse {
@@ -85,5 +86,19 @@ describe('computeOverallDisplayStatus', () => {
     } as unknown as HealthResponse;
     const result = computeOverallDisplayStatus(broken, notConfiguredBackup, []);
     assert.ok(result.label);
+  });
+});
+
+describe('refineHealthComponents', () => {
+  it('handles missing backups and uptime without throwing', () => {
+    const health = normalizeHealthResponse(
+      { app: { status: 'ok', message: 'online' }, api: { status: 'ok' }, database: { status: 'ok' }, mail: { status: 'ok' } },
+      {},
+      1,
+      true,
+    );
+    const refined = refineHealthComponents(health, undefined, []);
+    assert.equal(refined.app.message, 'online');
+    assert.ok(refined.uptime);
   });
 });

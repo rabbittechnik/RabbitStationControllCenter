@@ -219,7 +219,7 @@ export interface OverviewData {
   charts: ChartPoint[];
 }
 
-export type DataSourceKind = 'live' | 'error';
+export type DataSourceKind = 'live' | 'error' | 'degraded';
 
 export interface ControlCenterMeta {
   source: DataSourceKind;

@@ -3,6 +3,8 @@ import type { HealthResponse, HealthStatus } from '../types.js';
 type HealthComponent = {
   status?: string;
   message?: string;
+  configured?: boolean;
+  smtpConfigured?: boolean;
   connections?: number;
   responseTimeMs?: number;
   deliveryRate?: number;
@@ -13,6 +15,7 @@ type HealthComponent = {
   percent30Days?: number;
   lastBackupAt?: string;
   nextBackupAt?: string;
+  path?: string;
 };
 
 export type ComponentDisplay = {
@@ -50,6 +53,88 @@ export function unwrapHealthPayload(payload: unknown): Record<string, unknown> {
     return obj.data as Record<string, unknown>;
   }
   return obj;
+}
+
+function componentStatusValue(raw: unknown, fallback = 'unknown'): string {
+  const c = pickHealthComponent(raw);
+  if (typeof c?.status === 'string' && c.status.trim()) return c.status;
+  if (typeof raw === 'string' && raw.trim()) return raw;
+  return fallback;
+}
+
+function componentMessageValue(raw: unknown, fallback: string): string {
+  const c = pickHealthComponent(raw);
+  if (typeof c?.message === 'string' && c.message.trim()) return c.message.trim();
+  return fallback;
+}
+
+/**
+ * Zentrale Normalisierung der Haupt-App-Health-Antwort (Format A: { ok, data } oder Format B: flach).
+ * Alle Teilbereiche erhalten status + message — kein undefined.message mehr.
+ */
+export function normalizeMainAppHealth(payload: unknown): Record<string, unknown> {
+  const raw = unwrapHealthPayload(payload);
+  const mailStatus = componentStatusValue(raw.mail, 'unknown');
+  const paymentsStatus = componentStatusValue(raw.payments, 'unknown');
+  const backupsStatus = componentStatusValue(raw.backups, 'unknown');
+  const mailPartial = pickHealthComponent(raw.mail);
+  const paymentsPartial = pickHealthComponent(raw.payments);
+  const backupsPartial = pickHealthComponent(raw.backups);
+  const databasePartial = pickHealthComponent(raw.database);
+
+  return {
+    ...raw,
+    overallStatus: typeof raw.overallStatus === 'string' ? raw.overallStatus : 'unknown',
+    checkedAt: typeof raw.checkedAt === 'string' ? raw.checkedAt : null,
+    app: {
+      ...(pickHealthComponent(raw.app) ?? {}),
+      status: componentStatusValue(raw.app, 'unknown'),
+      message: componentMessageValue(raw.app, 'Keine App-Meldung verfügbar'),
+    },
+    api: {
+      ...(pickHealthComponent(raw.api) ?? {}),
+      status: componentStatusValue(raw.api, 'unknown'),
+      message: componentMessageValue(raw.api, 'Keine API-Meldung verfügbar'),
+    },
+    database: {
+      ...(databasePartial ?? {}),
+      status: componentStatusValue(raw.database, 'unknown'),
+      message: componentMessageValue(raw.database, 'Keine Datenbank-Meldung verfügbar'),
+      connections: databasePartial?.connections ?? null,
+      path: databasePartial?.path ?? null,
+    },
+    mail: {
+      ...(mailPartial ?? {}),
+      status: mailStatus,
+      message:
+        componentMessageValue(
+          raw.mail,
+          mailStatus === 'ok' ? 'Mailversand konfiguriert' : 'Keine Mail-Meldung verfügbar',
+        ),
+      configured:
+        mailPartial?.configured ?? mailPartial?.smtpConfigured ?? mailStatus === 'ok',
+    },
+    payments: {
+      ...(paymentsPartial ?? {}),
+      status: paymentsStatus,
+      message: componentMessageValue(raw.payments, 'Keine Zahlungs-Meldung verfügbar'),
+      configured: paymentsPartial?.configured ?? false,
+    },
+    backups: {
+      ...(backupsPartial ?? {}),
+      status: backupsStatus,
+      message: componentMessageValue(raw.backups, 'Keine Backup-Meldung verfügbar'),
+      configured: backupsPartial?.configured ?? backupsStatus === 'ok',
+    },
+    storage: {
+      ...(pickHealthComponent(raw.storage) ?? {}),
+      status: componentStatusValue(raw.storage, 'unknown'),
+      message: componentMessageValue(raw.storage, 'Keine Speicher-Meldung verfügbar'),
+    },
+    uptime: raw.uptime ?? null,
+    environment: typeof raw.environment === 'string' ? raw.environment : 'Nicht verfügbar',
+    version: typeof raw.version === 'string' ? raw.version : 'Nicht verfügbar',
+  };
 }
 
 export function isNotConfiguredMessage(msg?: string): boolean {
@@ -125,11 +210,15 @@ export function classifyMailForDisplay(mail?: HealthComponent | null): Component
   }
   const status = parseHealthStatus(statusRaw);
   if (status === 'ok') {
+    const subtitle =
+      typeof mail?.message === 'string' && mail.message.trim() ?
+        mail.message.trim()
+      : 'Mailversand konfiguriert';
     return {
       status: 'ok',
       configured: true,
       displayValue: 'OK',
-      displaySubtitle: 'SMTP konfiguriert',
+      displaySubtitle: subtitle,
     };
   }
   if (statusRaw === 'not_configured' || isNotConfiguredMessage(mail?.message)) {
@@ -369,7 +458,7 @@ export function normalizeHealthResponse(
   responseTimeMs: number,
   apiReachable: boolean,
 ): HealthResponse {
-  const health = unwrapHealthPayload(payload);
+  const health = normalizeMainAppHealth(payload);
   return normalizeAdminHealthPayload(health, backups, responseTimeMs, apiReachable);
 }
 

@@ -1,9 +1,17 @@
 import { useControlCenter } from '../../context/ControlCenterContext';
 
 export function ConnectionAlert() {
-  const { loading, isLive, loadError, meta } = useControlCenter();
+  const { loading, isLive, isDegraded, loadError, meta } = useControlCenter();
 
   if (loading) return null;
+
+  if (isDegraded && meta) {
+    return (
+      <div className="mb-4 rounded-lg border border-neon-orange/40 bg-neon-orange/10 px-4 py-3 text-sm text-orange-100">
+        {meta.message ?? 'Haupt-App verbunden, einzelne Statusdaten nicht vollständig verfügbar'}
+      </div>
+    );
+  }
 
   if (loadError) {
     const auth =

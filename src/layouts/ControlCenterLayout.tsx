@@ -64,7 +64,7 @@ function LayoutInner() {
           : null}
           <DataSourceBanner meta={meta} onRetry={refresh} retrying={refreshing} />
           <ConnectionAlert />
-          {loadError && !meta?.lastError?.includes('401') ?
+          {loadError && !meta?.lastError?.includes('401') && meta?.source !== 'degraded' ?
             <div className="mb-4 rounded-lg border border-neon-red/40 bg-neon-red/10 px-4 py-3 text-sm text-red-200">
               {loadError}
             </div>

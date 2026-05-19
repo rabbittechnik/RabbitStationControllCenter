@@ -7,7 +7,8 @@ import { SystemInfoPanel } from '../../components/control-center/SystemInfoPanel
 import { formatDateTime } from '../../utils/format';
 
 export function SystemStatusPage() {
-  const { data, isLive, loading, refreshing, refresh, meta } = useControlCenter();
+  const { data, isLive, isDegraded, loading, refreshing, refresh, meta, technicalError, loadError } =
+    useControlCenter();
   const [detailsOpen, setDetailsOpen] = useState(false);
   const health = data?.health;
 
@@ -28,12 +29,25 @@ export function SystemStatusPage() {
           </button>
         }
       />
-      <SystemStatusCards
-        health={isLive ? (health ?? null) : null}
-        backups={isLive ? (data?.backups ?? null) : null}
-        loading={loading}
-        unavailable={!isLive && !loading}
-      />
+      {isDegraded && !health && !loading ?
+        <div className="glass-card space-y-2 p-4 text-sm text-orange-100">
+          <p className="font-medium text-neon-orange">
+            {loadError ?? 'Statusdaten konnten nicht vollständig geladen werden.'}
+          </p>
+          {technicalError ?
+            <details className="text-xs text-slate-400">
+              <summary className="cursor-pointer text-neon-cyan">Technische Details</summary>
+              <pre className="mt-2 whitespace-pre-wrap break-words">{technicalError}</pre>
+            </details>
+          : null}
+        </div>
+      : <SystemStatusCards
+          health={isLive ? (health ?? null) : null}
+          backups={isLive ? (data?.backups ?? null) : null}
+          loading={loading}
+          unavailable={!isLive && !isDegraded && !loading}
+        />
+      }
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <div className="glass-card p-4 text-xs">
           <h3 className="mb-2 text-sm font-semibold text-white">Prüfungen</h3>

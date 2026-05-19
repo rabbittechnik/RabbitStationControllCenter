@@ -77,10 +77,18 @@ export function computeOverallDisplayStatus(
 
 export function refineHealthComponents(
   healthInput: HealthResponse,
-  backups: BackupStatus,
+  backupsInput: BackupStatus | null | undefined,
   logs: SystemLog[],
 ): HealthResponse {
   const health = ensureHealthShape(healthInput);
+  const backups: BackupStatus = backupsInput ?? {
+    lastBackupAt: health.checkedAt,
+    lastBackupStatus: 'unknown',
+    nextBackupAt: health.checkedAt,
+    sizeBytes: 0,
+    configured: false,
+    message: 'Keine Backup-Meldung verfügbar',
+  };
 
   const mailDisplay = classifyMailForDisplay({
     status: health.mail?.status,
@@ -93,10 +101,10 @@ export function refineHealthComponents(
     openCases: health.payments?.openCases,
   });
   const backupsDisplay = classifyBackupsForDisplay(
-    { status: health.backups?.status, message: backups.message },
+    { status: health.backups?.status, message: backups?.message },
     {
       configured: backups.configured,
-      message: backups.message,
+      message: backups?.message,
       lastBackupStatus: backups.lastBackupStatus,
     },
   );
@@ -125,12 +133,15 @@ export function refineHealthComponents(
       nextBackupAt: health.backups?.nextBackupAt ?? health.checkedAt,
     },
     storage: {
-      ...health.storage,
-      status: (health.storage?.usedPercent ?? 0) > 0 ? health.storage.status : 'unknown',
+      ...(health.storage ?? { usedPercent: 0, usedGb: 0, totalGb: 0 }),
+      status:
+        (health.storage?.usedPercent ?? 0) > 0 ?
+          (health.storage?.status ?? 'unknown')
+        : 'unknown',
     },
     uptime: {
-      ...health.uptime,
-      status: health.uptimeLabel ? 'ok' : health.uptime.status,
+      ...(health.uptime ?? { status: 'unknown', percent30Days: 0 }),
+      status: health.uptimeLabel ? 'ok' : (health.uptime?.status ?? 'unknown'),
     },
   });
 }

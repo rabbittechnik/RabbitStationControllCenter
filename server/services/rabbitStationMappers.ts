@@ -165,17 +165,20 @@ export function mapSecuritySummary(data: {
   };
 }
 
-export function mapBackupStatus(data: {
-  configured?: boolean;
-  lastBackup?: string | null;
-  message?: string;
-  status?: string;
-}): BackupStatus {
+export function mapBackupStatus(
+  data: {
+    configured?: boolean;
+    lastBackup?: string | null;
+    message?: string;
+    status?: string;
+  } | null | undefined,
+): BackupStatus {
+  const d = data ?? {};
   const now = new Date().toISOString();
-  const message = data.message ?? '';
-  const status = typeof data.status === 'string' ? data.status : undefined;
+  const message = d.message ?? '';
+  const status = typeof d.status === 'string' ? d.status : undefined;
   const notConfigured =
-    data.configured === false ||
+    d.configured === false ||
     status === 'not_configured' ||
     (message.toLowerCase().includes('not configured') && message.toLowerCase().includes('backup'));
 
@@ -190,10 +193,10 @@ export function mapBackupStatus(data: {
     };
   }
 
-  const configured = data.configured === true || status === 'ok' || Boolean(data.lastBackup);
+  const configured = d.configured === true || status === 'ok' || Boolean(d.lastBackup);
   return {
-    lastBackupAt: data.lastBackup ?? now,
-    lastBackupStatus: data.lastBackup ? 'success' : status === 'ok' ? 'success' : 'unknown',
+    lastBackupAt: d.lastBackup ?? now,
+    lastBackupStatus: d.lastBackup ? 'success' : status === 'ok' ? 'success' : 'unknown',
     nextBackupAt: now,
     sizeBytes: 0,
     configured,
