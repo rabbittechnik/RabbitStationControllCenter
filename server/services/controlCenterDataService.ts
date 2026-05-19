@@ -2,8 +2,10 @@ import {
   getRabbitStationConfig,
   rabbitStationFetch,
   rabbitStationPatch,
+  rabbitStationPost,
   RabbitStationApiError,
 } from './rabbitStationApiClient.js';
+import type { SupportAccessMode, SupportSession, SupportSessionStartResult } from '../types.js';
 import {
   emptyCharts,
   mapBackupStatus,
@@ -91,6 +93,79 @@ export async function patchLiveTenantSubscription(tenantId: string, body: Record
     `/api/admin/tenants/${encodeURIComponent(tenantId)}/subscription`,
     body,
   );
+}
+
+type MainSupportSession = {
+  id: string;
+  tenantId: string;
+  tenantName: string;
+  stationName?: string | null;
+  adminEmail?: string | null;
+  reason: string;
+  accessMode: SupportAccessMode;
+  status: SupportSession['status'];
+  startedAt: string;
+  expiresAt: string;
+  endedAt?: string | null;
+};
+
+function mapSupportSession(row: MainSupportSession): SupportSession {
+  return {
+    id: row.id,
+    tenantId: row.tenantId,
+    tenantName: row.tenantName,
+    stationName: row.stationName ?? null,
+    adminEmail: row.adminEmail ?? null,
+    reason: row.reason,
+    accessMode: row.accessMode,
+    status: row.status,
+    startedAt: row.startedAt,
+    expiresAt: row.expiresAt,
+    endedAt: row.endedAt ?? null,
+  };
+}
+
+export async function fetchLiveSupportSessions(filters?: { status?: string; tenantId?: string }) {
+  const cfg = getRabbitStationConfig();
+  if (!cfg.ready) throw new RabbitStationApiError(cfg.error, 'config_missing');
+  const qs = new URLSearchParams();
+  if (filters?.status) qs.set('status', filters.status);
+  if (filters?.tenantId) qs.set('tenantId', filters.tenantId);
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  const data = await rabbitStationFetch<{ sessions: MainSupportSession[] }>(
+    `/api/admin/support-sessions${suffix}`,
+  );
+  return { sessions: (data.sessions ?? []).map(mapSupportSession) };
+}
+
+export async function startLiveSupportSession(
+  tenantId: string,
+  body: { reason: string; accessMode: SupportAccessMode; durationMinutes: number },
+): Promise<SupportSessionStartResult> {
+  const cfg = getRabbitStationConfig();
+  if (!cfg.ready) throw new RabbitStationApiError(cfg.error, 'config_missing');
+  const raw = await rabbitStationPost<{
+    ok?: boolean;
+    supportSession: SupportSessionStartResult['supportSession'];
+    impersonationUrl: string;
+  }>(`/api/admin/tenants/${encodeURIComponent(tenantId)}/support-sessions/start`, body);
+  if (!raw.impersonationUrl || !raw.supportSession?.id) {
+    throw new RabbitStationApiError('Ungültige Antwort der Haupt-App (Support-Start).', 'invalid_json');
+  }
+  return {
+    supportSession: raw.supportSession,
+    impersonationUrl: raw.impersonationUrl,
+  };
+}
+
+export async function endLiveSupportSession(sessionId: string) {
+  const cfg = getRabbitStationConfig();
+  if (!cfg.ready) throw new RabbitStationApiError(cfg.error, 'config_missing');
+  await rabbitStationPost<{ ok: boolean }>(
+    `/api/admin/support-sessions/${encodeURIComponent(sessionId)}/end`,
+    {},
+  );
+  return { ok: true as const };
 }
 
 export async function fetchLiveLogs(limit = 50) {

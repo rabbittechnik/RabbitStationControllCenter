@@ -1,3 +1,4 @@
+import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
   Activity,
@@ -10,48 +11,30 @@ import {
   Settings,
   Rabbit,
 } from 'lucide-react';
+import { CC_NAV, CC_ROUTES, type CcRouteKey } from '../../control-center/routes';
 
-export type ControlCenterSection =
-  | 'overview'
-  | 'system'
-  | 'tenants'
-  | 'subscriptions'
-  | 'logs'
-  | 'backups'
-  | 'security'
-  | 'support'
-  | 'settings';
-
-export const COMING_SOON_SECTIONS: ControlCenterSection[] = ['security', 'support', 'settings'];
-
-const navItems: {
-  id: ControlCenterSection;
-  label: string;
-  icon: typeof LayoutDashboard;
-}[] = [
-  { id: 'overview', label: 'Übersicht', icon: LayoutDashboard },
-  { id: 'system', label: 'Systemstatus', icon: Activity },
-  { id: 'tenants', label: 'Tenants', icon: Building2 },
-  { id: 'subscriptions', label: 'Abos', icon: CreditCard },
-  { id: 'logs', label: 'Logs', icon: FileText },
-  { id: 'backups', label: 'Backups', icon: Cloud },
-  { id: 'security', label: 'Sicherheit', icon: Shield },
-  { id: 'support', label: 'Support-Zugriffe', icon: Headphones },
-  { id: 'settings', label: 'Einstellungen', icon: Settings },
-];
+const icons: Record<CcRouteKey, typeof LayoutDashboard> = {
+  overview: LayoutDashboard,
+  system: Activity,
+  tenants: Building2,
+  abos: CreditCard,
+  logs: FileText,
+  backups: Cloud,
+  security: Shield,
+  support: Headphones,
+  settings: Settings,
+};
 
 interface ControlCenterSidebarProps {
   collapsed?: boolean;
-  activeSection: ControlCenterSection;
-  onNavigate: (section: ControlCenterSection) => void;
   apiConnected?: boolean;
+  onNavigate?: () => void;
 }
 
 export function ControlCenterSidebar({
   collapsed,
-  activeSection,
-  onNavigate,
   apiConnected,
+  onNavigate,
 }: ControlCenterSidebarProps) {
   return (
     <aside
@@ -76,46 +59,42 @@ export function ControlCenterSidebar({
       </div>
 
       <nav className="flex-1 space-y-0.5 overflow-y-auto p-2">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = activeSection === item.id;
-          const soon = COMING_SOON_SECTIONS.includes(item.id);
+        {CC_NAV.map((item) => {
+          const Icon = icons[item.key];
           return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => onNavigate(item.id)}
-              className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm transition-all ${
-                isActive ?
-                  'sidebar-active font-medium'
-                : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
-              }`}
+            <NavLink
+              key={item.key}
+              to={CC_ROUTES[item.key]}
+              end={item.key === 'overview'}
+              onClick={onNavigate}
+              className={({ isActive }) =>
+                `flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm transition-all ${
+                  isActive ?
+                    'sidebar-active font-medium text-neon-cyan shadow-[0_0_12px_rgba(0,229,255,0.15)]'
+                  : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
+                }`
+              }
             >
               <Icon className="h-4 w-4 shrink-0" />
-              {!collapsed && (
-                <>
-                  <span className="flex-1">{item.label}</span>
-                  {soon ?
-                    <span className="rounded bg-white/5 px-1.5 py-0.5 text-[9px] text-slate-500">
-                      bald
-                    </span>
-                  : null}
-                </>
-              )}
-            </button>
+              {!collapsed && <span className="flex-1">{item.label}</span>}
+            </NavLink>
           );
         })}
       </nav>
 
-      {!collapsed && (
-        <div className="border-t border-white/5 p-3 text-[10px] text-slate-500">
-          <p className="font-medium text-slate-400">Verbindung</p>
-          <p className={apiConnected ? 'text-neon-green' : 'text-neon-orange'}>
-            {apiConnected ? 'Haupt-App verbunden' : 'Haupt-App nicht verbunden'}
-          </p>
-          <p className="mt-2 text-slate-600">Control Center · Live-Daten</p>
-        </div>
-      )}
+      {!collapsed && <SidebarFooter apiConnected={apiConnected} />}
     </aside>
+  );
+}
+
+function SidebarFooter({ apiConnected }: { apiConnected?: boolean }) {
+  return (
+    <div className="border-t border-white/5 p-3 text-[10px] text-slate-500">
+      <p className="font-medium text-slate-400">Verbindung</p>
+      <p className={apiConnected ? 'text-neon-green' : 'text-neon-orange'}>
+        {apiConnected ? 'Haupt-App verbunden' : 'Haupt-App nicht verbunden'}
+      </p>
+      <p className="mt-2 text-slate-600">Control Center · Live-Daten</p>
+    </div>
   );
 }

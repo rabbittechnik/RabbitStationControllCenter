@@ -43,11 +43,24 @@ export function getRabbitStationConfig(): RabbitStationConfig {
 
 export function getConfigStatusDetails() {
   const cfg = getRabbitStationConfig();
+  let apiUrlDisplay: string | null = null;
+  if (cfg.ready) {
+    try {
+      apiUrlDisplay = new URL(cfg.baseUrl).origin;
+    } catch {
+      apiUrlDisplay = 'konfiguriert';
+    }
+  } else if (cfg.apiUrlSet) {
+    apiUrlDisplay = 'gesetzt (Verbindung prüfen)';
+  }
   return {
     apiConfigured: cfg.ready,
     apiUrlSet: cfg.ready ? true : cfg.apiUrlSet,
     tokenSet: cfg.ready ? true : cfg.tokenSet,
     error: cfg.ready ? null : cfg.error,
+    apiUrlDisplay,
+    demoDataDisabled: true,
+    refreshIntervalMs: 45_000,
   };
 }
 
@@ -141,4 +154,8 @@ export async function rabbitStationFetch<T>(apiPath: string): Promise<T> {
 
 export async function rabbitStationPatch<T>(apiPath: string, body: unknown): Promise<T> {
   return rabbitStationRequest<T>(apiPath, { method: 'PATCH', body });
+}
+
+export async function rabbitStationPost<T>(apiPath: string, body?: unknown): Promise<T> {
+  return rabbitStationRequest<T>(apiPath, { method: 'POST', body });
 }

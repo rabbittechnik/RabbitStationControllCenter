@@ -127,6 +127,35 @@ export interface SecuritySummary {
   lockedUsers?: number;
 }
 
+export type SupportSessionStatus = 'active' | 'ended' | 'expired' | 'revoked';
+export type SupportAccessMode = 'read_only' | 'support_write';
+
+export interface SupportSession {
+  id: string;
+  tenantId: string;
+  tenantName: string;
+  stationName: string | null;
+  adminEmail: string | null;
+  reason: string;
+  accessMode: SupportAccessMode;
+  status: SupportSessionStatus;
+  startedAt: string;
+  expiresAt: string;
+  endedAt: string | null;
+}
+
+export interface SupportSessionStartResult {
+  supportSession: {
+    id: string;
+    tenantId: string;
+    tenantName: string;
+    accessMode: SupportAccessMode;
+    status: SupportSessionStatus;
+    expiresAt: string;
+  };
+  impersonationUrl: string;
+}
+
 export interface BackupStatus {
   lastBackupAt: string;
   lastBackupStatus: string;

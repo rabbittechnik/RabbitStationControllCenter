@@ -148,10 +148,11 @@ export function mapLogs(rows: MainLog[], tenants: Tenant[] = []): SystemLog[] {
 export function mapSecuritySummary(data: {
   failedLogins24h?: number;
   blockedTenants?: number;
+  activeSupportSessions?: number;
 }): SecuritySummary {
   return {
     failedLogins24h: data.failedLogins24h ?? 0,
-    activeSupportSessions: 0,
+    activeSupportSessions: data.activeSupportSessions ?? 0,
     roleChanges24h: 0,
     blockedTenants: data.blockedTenants ?? 0,
     suspiciousApiRequests: 0,

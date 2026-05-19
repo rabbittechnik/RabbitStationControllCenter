@@ -87,16 +87,26 @@ export function TenantSubscriptionManager({
 
   const handleSupportConfirm = async (reason: string) => {
     if (!activeTenant) return;
-    try {
-      await api.startSupportSession(activeTenant.id, reason);
-      notify('Support-Zugriff gestartet.', 'success');
-    } catch (e) {
-      notify(e instanceof Error ? e.message : 'Support-Zugriff fehlgeschlagen.', 'error');
-      throw e;
-    } finally {
-      setModal(null);
-      setActiveTenant(null);
+    const result = await api.startSupportSession(activeTenant.id, {
+      reason,
+      accessMode: 'read_only',
+      durationMinutes: 60,
+    });
+    if (!result.ok) {
+      notify(
+        result.code === 'forbidden' || result.code === 'unauthorized'
+          ? 'Keine Berechtigung für Support-Zugriffe.'
+          : result.message,
+        'error',
+      );
+      throw new Error(result.message);
     }
+    notify('Support-Zugriff gestartet.', 'success');
+    if (result.data.impersonationUrl) {
+      window.open(result.data.impersonationUrl, '_blank', 'noopener,noreferrer');
+    }
+    setModal(null);
+    setActiveTenant(null);
   };
 
   return (

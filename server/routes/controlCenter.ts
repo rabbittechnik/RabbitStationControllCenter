@@ -8,8 +8,11 @@ import {
   fetchLiveOverview,
   fetchLiveSecurity,
   fetchLiveSubscriptions,
+  fetchLiveSupportSessions,
   fetchLiveTenants,
+  endLiveSupportSession,
   patchLiveTenantSubscription,
+  startLiveSupportSession,
 } from '../services/controlCenterDataService.js';
 import {
   getConfigStatusDetails,
@@ -172,6 +175,122 @@ router.get('/backups/status', async (_req, res) => {
     const { backups } = await fetchLiveBackups();
     res.json({ ...backups, meta: { source: 'live', apiConfigured: true, apiUrlSet: true, tokenSet: true } });
   } catch (e) {
+    handleError(res, e);
+  }
+});
+
+router.get('/support-sessions', async (req, res) => {
+  try {
+    const status = req.query.status ? String(req.query.status) : undefined;
+    const tenantId = req.query.tenantId ? String(req.query.tenantId) : undefined;
+    const { sessions } = await fetchLiveSupportSessions({ status, tenantId });
+    res.json({
+      sessions,
+      meta: { source: 'live', apiConfigured: true, apiUrlSet: true, tokenSet: true },
+      message: sessions.length === 0 ? 'Keine Support-Sitzungen vorhanden.' : undefined,
+    });
+  } catch (e) {
+    if (e instanceof RabbitStationApiError && (e.code === 'unauthorized' || e.code === 'forbidden')) {
+      return res.status(e.status ?? 403).json({
+        error: 'Keine Berechtigung für Support-Zugriffe.',
+        code: e.code,
+        meta: buildErrorMeta(e.message),
+        sessions: [],
+      });
+    }
+    if (
+      e instanceof RabbitStationApiError &&
+      (e.code === 'timeout' || e.code === 'network_error' || e.code === 'server_error')
+    ) {
+      return res.status(502).json({
+        error: 'Haupt-App nicht erreichbar.',
+        code: e.code,
+        meta: buildErrorMeta(e.message),
+        sessions: [],
+      });
+    }
+    handleError(res, e);
+  }
+});
+
+router.post('/tenants/:tenantId/support-sessions/start', async (req, res) => {
+  try {
+    const tenantId = String(req.params.tenantId ?? '');
+    const body = req.body as {
+      reason?: string;
+      accessMode?: string;
+      durationMinutes?: number;
+    };
+    const reason = String(body.reason ?? '').trim();
+    if (!reason) {
+      return res.status(400).json({
+        error: 'Grund ist erforderlich.',
+        code: 'reason_required',
+        meta: buildErrorMeta('Grund ist erforderlich.'),
+      });
+    }
+    const accessMode = body.accessMode === 'support_write' ? 'support_write' : 'read_only';
+    const durationMinutes = Number(body.durationMinutes ?? 60);
+    const result = await startLiveSupportSession(tenantId, { reason, accessMode, durationMinutes });
+    res.status(201).json({
+      ok: true,
+      ...result,
+      meta: { source: 'live', apiConfigured: true, apiUrlSet: true, tokenSet: true },
+    });
+  } catch (e) {
+    if (e instanceof RabbitStationApiError) {
+      if (e.code === 'unauthorized' || e.code === 'forbidden') {
+        return res.status(e.status ?? 403).json({
+          error: 'Keine Berechtigung für Support-Zugriffe.',
+          code: e.code,
+          meta: buildErrorMeta(e.message),
+        });
+      }
+      if (e.code === 'timeout' || e.code === 'network_error' || e.code === 'server_error') {
+        return res.status(502).json({
+          error: 'Haupt-App nicht erreichbar.',
+          code: e.code,
+          meta: buildErrorMeta(e.message),
+        });
+      }
+      if (e.status === 404 || e.code === 'not_found') {
+        return res.status(404).json({
+          error: e.message,
+          code: e.code,
+          meta: buildErrorMeta(e.message),
+        });
+      }
+    }
+    handleError(res, e);
+  }
+});
+
+router.post('/support-sessions/:id/end', async (req, res) => {
+  try {
+    const sessionId = String(req.params.id ?? '');
+    await endLiveSupportSession(sessionId);
+    res.json({
+      ok: true,
+      message: 'Support-Sitzung wurde beendet.',
+      meta: { source: 'live', apiConfigured: true, apiUrlSet: true, tokenSet: true },
+    });
+  } catch (e) {
+    if (e instanceof RabbitStationApiError) {
+      if (e.code === 'unauthorized' || e.code === 'forbidden') {
+        return res.status(e.status ?? 403).json({
+          error: 'Keine Berechtigung für Support-Zugriffe.',
+          code: e.code,
+          meta: buildErrorMeta(e.message),
+        });
+      }
+      if (e.code === 'timeout' || e.code === 'network_error' || e.code === 'server_error') {
+        return res.status(502).json({
+          error: 'Haupt-App nicht erreichbar.',
+          code: e.code,
+          meta: buildErrorMeta(e.message),
+        });
+      }
+    }
     handleError(res, e);
   }
 });

@@ -162,11 +162,34 @@ export const api = {
 
   runBackupCheck: () => request<import('../types').BackupStatus>('/control-center/backups/status'),
 
-  startSupportSession: (tenantId: string, reason?: string) =>
-    request<{ sessionId: number }>(`/admin/tenants/${tenantId}/support-session/start`, {
+  getSupportSessions: (filters?: { status?: string; tenantId?: string }) => {
+    const qs = new URLSearchParams();
+    if (filters?.status) qs.set('status', filters.status);
+    if (filters?.tenantId) qs.set('tenantId', filters.tenantId);
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return requestSafe<{
+      sessions: import('../types').SupportSession[];
+      meta?: ControlCenterMeta;
+      message?: string;
+    }>(`/control-center/support-sessions${suffix}`);
+  },
+
+  startSupportSession: (
+    tenantId: string,
+    body: import('../types').SupportSessionStartBody,
+  ) =>
+    requestSafe<
+      import('../types').SupportSessionStartResult & { ok?: boolean; meta?: ControlCenterMeta }
+    >(`/control-center/tenants/${encodeURIComponent(tenantId)}/support-sessions/start`, {
       method: 'POST',
-      body: JSON.stringify({ reason }),
+      body: JSON.stringify(body),
     }),
+
+  endSupportSession: (sessionId: string) =>
+    requestSafe<{ ok: boolean; message?: string; meta?: ControlCenterMeta }>(
+      `/control-center/support-sessions/${encodeURIComponent(sessionId)}/end`,
+      { method: 'POST', body: JSON.stringify({}) },
+    ),
 
   logControlCenterOpen: () =>
     request<{ ok: boolean }>('/admin/audit/control-center-opened', { method: 'POST' }),
