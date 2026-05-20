@@ -6,7 +6,7 @@ import { LogsFilterBar, LogsTable } from '../../components/control-center/LogsTa
 import type { LogCategoryFilter, LogSeverityFilter } from '../../utils/logFilters';
 
 export function LogsPage() {
-  const { data, isLive, loading, search, refresh } = useControlCenter();
+  const { data, isLive, loading, search, refresh, serverApiOnline } = useControlCenter();
   const [params] = useSearchParams();
   const tenantId = params.get('tenant');
   const [severity, setSeverity] = useState<LogSeverityFilter>('all');
@@ -15,7 +15,8 @@ export function LogsPage() {
   const logs = useMemo(() => (isLive ? (data?.logs ?? []) : []), [data?.logs, isLive]);
 
   const empty =
-    !isLive && !loading ? 'Logs konnten nicht geladen werden.'
+    !serverApiOnline && !loading ?
+      'Haupt-App-Logs können nicht geladen werden, weil die Server/API nicht erreichbar ist.'
     : logs.length === 0 ? 'Keine aktuellen Systemmeldungen.'
     : tenantId ? 'Keine Logs für diesen Tenant.'
     : undefined;

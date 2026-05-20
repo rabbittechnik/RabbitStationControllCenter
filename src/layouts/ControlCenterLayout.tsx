@@ -17,6 +17,8 @@ function LayoutInner() {
     refreshing,
     loadError,
     isLive,
+    serverApiOnline,
+    frontendOnline,
     search,
     setSearch,
     refresh,
@@ -26,15 +28,16 @@ function LayoutInner() {
 
   if (!user) return null;
 
-  const overallStatus = isLive ? (data?.health?.overallStatus ?? 'unknown') : 'unknown';
-  const overallLabel = isLive ? data?.health?.overallLabel : undefined;
+  const overallStatus = data?.health?.overallStatus ?? 'unknown';
+  const overallLabel = data?.health?.overallLabel;
 
   return (
     <div className="flex h-screen overflow-hidden bg-navy-950">
       <motionlessSidebarSlot mobile={mobileSidebar}>
         <ControlCenterSidebar
           collapsed={sidebarCollapsed}
-          apiConnected={isLive}
+          frontendConnected={frontendOnline}
+          serverApiConnected={serverApiOnline}
           onNavigate={() => setMobileSidebar(false)}
         />
       </motionlessSidebarSlot>

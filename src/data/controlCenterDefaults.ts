@@ -15,9 +15,17 @@ import { safeText } from '../utils/safeDisplay';
 
 export const UNKNOWN_STATUS = 'unknown' as HealthStatus;
 
+const unknownConnectivity = {
+  status: UNKNOWN_STATUS,
+  message: 'Nicht verfügbar',
+  httpStatus: null as number | null,
+};
+
 export const defaultHealth: HealthResponse = {
   overallStatus: UNKNOWN_STATUS,
   checkedAt: new Date().toISOString(),
+  frontend: { ...unknownConnectivity },
+  serverApi: { ...unknownConnectivity },
   app: { status: UNKNOWN_STATUS, message: 'Nicht verfügbar' },
   api: { status: UNKNOWN_STATUS, responseTimeMs: 0 },
   database: { status: UNKNOWN_STATUS, connections: 0 },

@@ -5,9 +5,13 @@ import { normalizeHealthResponse } from './healthNormalize.js';
 import type { BackupStatus, HealthResponse } from '../types.js';
 
 function baseHealth(overrides: Partial<HealthResponse> = {}): HealthResponse {
+  const fe = { status: 'ok' as const, message: 'Client ok' };
+  const apiProbe = { status: 'ok' as const, message: 'API ok', responseTimeMs: 12 };
   return {
     overallStatus: 'ok',
     checkedAt: new Date().toISOString(),
+    frontend: fe,
+    serverApi: apiProbe,
     app: { status: 'ok', message: 'online' },
     api: { status: 'ok', responseTimeMs: 12 },
     database: { status: 'ok', connections: 1 },
@@ -76,6 +80,30 @@ describe('computeOverallDisplayStatus', () => {
       [],
     );
     assert.equal(result.label, 'outage');
+  });
+
+  it('reports outage when server API is offline', () => {
+    const result = computeOverallDisplayStatus(
+      baseHealth({
+        serverApi: { status: 'error', message: 'offline' },
+        api: { status: 'error', responseTimeMs: 0 },
+      }),
+      notConfiguredBackup,
+      [],
+    );
+    assert.equal(result.label, 'outage');
+  });
+
+  it('reports partial when frontend offline but API online', () => {
+    const result = computeOverallDisplayStatus(
+      baseHealth({
+        frontend: { status: 'error', message: 'offline' },
+        app: { status: 'error', message: 'offline' },
+      }),
+      notConfiguredBackup,
+      [],
+    );
+    assert.equal(result.label, 'partial');
   });
 
   it('does not crash when mail/payments objects are missing', () => {

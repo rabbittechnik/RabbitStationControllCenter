@@ -11,18 +11,21 @@ import { CC_ROUTES } from '../../control-center/routes';
 import { useState } from 'react';
 
 export function OverviewPage() {
-  const { data, isLive, loading, search, refresh, runBackupCheck, backupChecking } =
+  const { data, isLive, loading, search, refresh, runBackupCheck, backupChecking, serverApiOnline } =
     useControlCenter();
+  const showHealth = Boolean(data?.health) && !loading;
   const navigate = useNavigate();
   const [severityFilter, setSeverityFilter] = useState('all');
 
   const tenantEmpty =
-    !isLive && !loading ? 'Tenants konnten nicht geladen werden.'
+    !serverApiOnline && !loading ?
+      'Haupt-App API offline – Daten können aktuell nicht geladen werden.'
     : isLive && (data?.tenants?.length ?? 0) === 0 ? 'Keine Tenants gefunden.'
     : undefined;
 
   const logsEmpty =
-    !isLive && !loading ? 'Logs konnten nicht geladen werden.'
+    !serverApiOnline && !loading ?
+      'Haupt-App-Logs können nicht geladen werden, weil die Server/API nicht erreichbar ist.'
     : isLive && (data?.logs?.length ?? 0) === 0 ? 'Keine aktuellen Systemmeldungen.'
     : undefined;
 
@@ -30,10 +33,10 @@ export function OverviewPage() {
     <>
       <div className="mb-4">
         <SystemStatusCards
-          health={isLive ? (data?.health ?? null) : null}
-          backups={isLive ? (data?.backups ?? null) : null}
+          health={showHealth ? (data?.health ?? null) : null}
+          backups={data?.backups ?? null}
           loading={loading}
-          unavailable={!isLive && !loading}
+          unavailable={!showHealth}
         />
       </div>
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_320px]">

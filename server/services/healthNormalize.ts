@@ -350,25 +350,62 @@ export function classifyBackupsForDisplay(
   };
 }
 
+function defaultConnectivity(
+  partial: Partial<HealthResponse>,
+  role: 'frontend' | 'serverApi',
+  checkedAt: string,
+): import('../types.js').HealthConnectivityInfo {
+  const fromPartial = role === 'frontend' ? partial.frontend : partial.serverApi;
+  const legacy = role === 'frontend' ? partial.app : partial.api;
+  const status = parseHealthStatus(
+    fromPartial?.status ?? legacy?.status ?? 'unknown',
+  );
+  const message =
+    fromPartial?.message ??
+    (role === 'frontend' ?
+      (partial.app?.message ?? 'Nicht verfügbar')
+    : status === 'ok' ?
+      'Server/API erreichbar'
+    : 'Server/API nicht erreichbar');
+  return {
+    status,
+    message,
+    url: fromPartial?.url,
+    checkedAt: fromPartial?.checkedAt ?? checkedAt,
+    responseTimeMs:
+      fromPartial?.responseTimeMs ??
+      (role === 'serverApi' ? partial.api?.responseTimeMs : undefined),
+    httpStatus: fromPartial?.httpStatus ?? null,
+    errorCode: fromPartial?.errorCode,
+    technicalDetail: fromPartial?.technicalDetail,
+    railwayHint: fromPartial?.railwayHint,
+    adminHealthAvailable: fromPartial?.adminHealthAvailable,
+  };
+}
+
 /** Stellt sicher, dass alle Health-Teilbereiche existieren (kein Zugriff auf undefined.configured). */
 export function ensureHealthShape(partial: Partial<HealthResponse> | HealthResponse): HealthResponse {
   const checkedAt =
     typeof partial.checkedAt === 'string' ? partial.checkedAt : new Date().toISOString();
   const mailPartial = partial.mail;
   const paymentsPartial = partial.payments;
+  const frontend = defaultConnectivity(partial, 'frontend', checkedAt);
+  const serverApi = defaultConnectivity(partial, 'serverApi', checkedAt);
 
   return {
     overallStatus: parseHealthStatus(partial.overallStatus ?? 'unknown'),
     overallLabel: partial.overallLabel,
     checkedAt,
     uptimeLabel: partial.uptimeLabel,
+    frontend,
+    serverApi,
     app: {
-      status: parseHealthStatus(partial.app?.status ?? 'unknown'),
-      message: partial.app?.message ?? 'Nicht verfügbar',
+      status: frontend.status,
+      message: frontend.message,
     },
     api: {
-      status: parseHealthStatus(partial.api?.status ?? 'unknown'),
-      responseTimeMs: partial.api?.responseTimeMs ?? 0,
+      status: serverApi.status,
+      responseTimeMs: serverApi.responseTimeMs ?? partial.api?.responseTimeMs ?? 0,
     },
     database: {
       status: parseHealthStatus(partial.database?.status ?? 'unknown'),
@@ -473,7 +510,7 @@ export function normalizeAdminHealthPayload(
     typeof health.checkedAt === 'string' ? health.checkedAt : new Date().toISOString();
 
   if (!apiReachable) {
-    return {
+    return ensureHealthShape({
       overallStatus: 'error',
       checkedAt,
       app: { status: 'error', message: 'Haupt-App nicht erreichbar' },
@@ -486,7 +523,7 @@ export function normalizeAdminHealthPayload(
       uptime: { status: 'warning', percent30Days: 0 },
       warnings: [],
       errors: ['RabbitStation Haupt-App nicht erreichbar'],
-    };
+    });
   }
 
   const app = pickHealthComponent(health.app);
@@ -522,7 +559,7 @@ export function normalizeAdminHealthPayload(
   if (health.ok === false) errors.push('Haupt-App meldet Fehlerstatus');
   if (dbStatus === 'error' && database?.message) errors.push(database.message);
 
-  const normalized: HealthResponse = {
+  const normalized: Partial<HealthResponse> = {
     overallStatus: parseHealthStatus(
       typeof health.overallStatus === 'string' ? health.overallStatus : 'ok',
     ),

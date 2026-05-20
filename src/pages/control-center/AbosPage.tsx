@@ -22,7 +22,7 @@ import { trialExtendErrorMessage } from '../../utils/trialExtend';
 type ModalKind = 'details' | 'plan' | 'trial' | 'activate' | null;
 
 export function AbosPage() {
-  const { data, isLive, loading, search, refresh } = useControlCenter();
+  const { data, isLive, loading, search, refresh, serverApiOnline } = useControlCenter();
   const navigate = useNavigate();
   const [activeTenant, setActiveTenant] = useState<Tenant | null>(null);
   const [modal, setModal] = useState<ModalKind>(null);
@@ -140,7 +140,11 @@ export function AbosPage() {
           tenants={isLive ? (data?.tenants ?? []) : []}
           search={search}
           disabled={!isLive}
-          emptyMessage={!isLive && !loading ? 'Keine Daten vorhanden' : undefined}
+          emptyMessage={
+            !serverApiOnline && !loading ?
+              'Haupt-App API offline – Daten können aktuell nicht geladen werden.'
+            : undefined
+          }
           onAction={(action, tenant) => void handleAction(action, tenant)}
         />
       </div>

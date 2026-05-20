@@ -1,5 +1,6 @@
 import { getDb } from '../db/index.js';
 import type { HealthResponse, HealthStatus } from '../types.js';
+import { ensureHealthShape } from './healthNormalize.js';
 
 function computeOverall(parts: HealthStatus[]): HealthStatus {
   if (parts.includes('error')) return 'error';
@@ -47,7 +48,7 @@ export async function runHealthCheck(): Promise<HealthResponse> {
     'ok',
   ];
 
-  const result: HealthResponse = {
+  const result: HealthResponse = ensureHealthShape({
     overallStatus: computeOverall(parts),
     checkedAt: now.toISOString(),
     app: { status: 'ok', message: 'App online' },
@@ -72,7 +73,7 @@ export async function runHealthCheck(): Promise<HealthResponse> {
     uptime: { status: 'ok', percent30Days: 99.98 },
     warnings,
     errors: dbOk ? [] : ['Datenbankverbindung fehlgeschlagen'],
-  };
+  });
 
   db.prepare(
     `INSERT INTO system_health_checks

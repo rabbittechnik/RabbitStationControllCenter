@@ -5,10 +5,20 @@ export function ConnectionAlert() {
 
   if (loading) return null;
 
+  const banner = meta?.connectivityBanner?.trim();
+
+  if (banner && meta?.serverApiOnline === false) {
+    return (
+      <div className="mb-4 rounded-lg border border-neon-red/40 bg-neon-red/10 px-4 py-3 text-sm text-red-200">
+        {banner}
+      </div>
+    );
+  }
+
   if (isDegraded && meta) {
     return (
       <div className="mb-4 rounded-lg border border-neon-orange/40 bg-neon-orange/10 px-4 py-3 text-sm text-orange-100">
-        {meta.message ?? 'Haupt-App verbunden, einzelne Statusdaten nicht vollständig verfügbar'}
+        {meta.message ?? 'Server/API verbunden, einzelne Statusdaten nicht vollständig verfügbar'}
       </div>
     );
   }
@@ -26,10 +36,10 @@ export function ConnectionAlert() {
     );
   }
 
-  if (!isLive && meta) {
+  if (!isLive && meta && meta.serverApiOnline === false && !banner) {
     return (
       <div className="mb-4 rounded-lg border border-neon-orange/40 bg-neon-orange/10 px-4 py-3 text-sm text-orange-100">
-        RabbitStation Haupt-App nicht erreichbar
+        RabbitStation Haupt-App Server/API nicht erreichbar
       </div>
     );
   }

@@ -27,13 +27,15 @@ const icons: Record<CcRouteKey, typeof LayoutDashboard> = {
 
 interface ControlCenterSidebarProps {
   collapsed?: boolean;
-  apiConnected?: boolean;
+  frontendConnected?: boolean;
+  serverApiConnected?: boolean;
   onNavigate?: () => void;
 }
 
 export function ControlCenterSidebar({
   collapsed,
-  apiConnected,
+  frontendConnected,
+  serverApiConnected,
   onNavigate,
 }: ControlCenterSidebarProps) {
   return (
@@ -82,17 +84,40 @@ export function ControlCenterSidebar({
         })}
       </nav>
 
-      {!collapsed && <SidebarFooter apiConnected={apiConnected} />}
+      {!collapsed && (
+        <SidebarFooter
+          frontendConnected={frontendConnected}
+          serverApiConnected={serverApiConnected}
+        />
+      )}
     </aside>
   );
 }
 
-function SidebarFooter({ apiConnected }: { apiConnected?: boolean }) {
+function connectionLine(connected?: boolean) {
+  if (connected === true) return { text: 'verbunden', className: 'text-neon-green' };
+  if (connected === false) return { text: 'getrennt', className: 'text-neon-orange' };
+  return { text: 'unbekannt', className: 'text-slate-500' };
+}
+
+function SidebarFooter({
+  frontendConnected,
+  serverApiConnected,
+}: {
+  frontendConnected?: boolean;
+  serverApiConnected?: boolean;
+}) {
+  const fe = connectionLine(frontendConnected);
+  const api = connectionLine(serverApiConnected);
+
   return (
     <div className="border-t border-white/5 p-3 text-[10px] text-slate-500">
       <p className="font-medium text-slate-400">Verbindung</p>
-      <p className={apiConnected ? 'text-neon-green' : 'text-neon-orange'}>
-        {apiConnected ? 'Haupt-App verbunden' : 'Haupt-App nicht verbunden'}
+      <p>
+        Frontend: <span className={fe.className}>{fe.text}</span>
+      </p>
+      <p>
+        Server/API: <span className={api.className}>{api.text}</span>
       </p>
       <p className="mt-2 text-slate-600">Control Center · Live-Daten</p>
     </div>

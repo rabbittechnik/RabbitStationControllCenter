@@ -7,6 +7,7 @@ import {
   Cloud,
   HardDrive,
   Clock,
+  Monitor,
 } from 'lucide-react';
 import { StatusCard } from './StatusCard';
 import type { BackupStatus, HealthResponse, HealthStatus } from '../../types';
@@ -15,8 +16,10 @@ import {
   backupCardValue,
   mailCardValue,
   mailConfiguredFlag,
+  notCheckableCardValue,
   paymentsCardValue,
   paymentsConfiguredFlag,
+  serverApiOffline,
   statusVariant,
 } from '../../utils/healthDisplay';
 import { formatTime } from '../../utils/format';
@@ -31,7 +34,7 @@ interface SystemStatusCardsProps {
 
 function coreLabel(status: HealthStatus | undefined, ok: string, bad: string): string {
   if (status === 'ok') return ok;
-  if (status === 'unknown') return 'Nicht verfügbar';
+  if (status === 'unknown') return 'Nicht prüfbar';
   return bad;
 }
 
@@ -40,64 +43,85 @@ export function SystemStatusCards({ health, backups, loading, unavailable }: Sys
     return <StatusCardsSkeleton unavailable={unavailable} loading={loading} />;
   }
 
+  const apiDown = serverApiOffline(health);
   const mail = health.mail;
   const payments = health.payments;
   const backupConfigured = backups?.configured === true;
   const mailOk = mailConfiguredFlag(mail);
 
-  const mailValue = mailCardValue(mail);
+  const mailValue = apiDown ? notCheckableCardValue() : mailCardValue(mail);
 
   const mailSubtitle =
-    mailOk && mail?.status === 'ok' ?
+    apiDown ?
+      'Nicht prüfbar – Server/API offline'
+    : mailOk && mail?.status === 'ok' ?
       safeText(mail?.message, 'Mailversand konfiguriert')
     : safeText(mail?.message, 'SMTP-Status unbekannt');
 
-  const paymentsValue = paymentsCardValue(payments);
+  const paymentsValue = apiDown ? notCheckableCardValue() : paymentsCardValue(payments);
 
   const paymentsSubtitle =
-    !paymentsConfiguredFlag(payments) ?
+    apiDown ?
+      'Nicht prüfbar – Server/API offline'
+    : !paymentsConfiguredFlag(payments) ?
       'Zahlungssystem noch nicht angebunden'
     : (payments?.openCases ?? 0) > 0 ?
       `${payments.openCases} offene Fälle`
     : safeText(payments?.message, 'Keine offenen Zahlungsfälle');
 
-  const backupValue = backupCardValue(backups);
+  const backupValue = apiDown ? notCheckableCardValue() : backupCardValue(backups);
 
   const backupSubtitle =
-    backupConfigured === false ?
+    apiDown ?
+      'Nicht prüfbar – Server/API offline'
+    : backupConfigured === false ?
       safeText(backups?.message, 'Backup-System noch nicht eingerichtet')
     : backups?.lastBackupAt ?
       `Letztes: ${formatTime(backups.lastBackupAt)}`
     : 'Noch kein Backup gelaufen';
 
+  const fe = health.frontend ?? health.app;
+  const api = health.serverApi ?? health.api;
+
+  const frontendStatus = fe?.status ?? health.app?.status;
+  const serverStatus = api?.status ?? health.api?.status;
+
   const cards = [
     {
-      title: 'App Online',
-      value: coreLabel(health.app?.status, 'Online', 'Offline'),
-      subtitle: health.app?.message ?? 'Nicht verfügbar',
-      icon: CheckCircle2,
-      variant: statusVariant(health.app?.status),
-      showPulse: health.app?.status === 'ok',
+      title: 'Frontend',
+      value: coreLabel(frontendStatus, 'Online', 'Offline'),
+      subtitle: safeText(
+        typeof fe === 'object' && 'message' in (fe as object) ? (fe as { message?: string }).message : health.app?.message,
+        'Client erreichbar',
+      ),
+      icon: Monitor,
+      variant: statusVariant(frontendStatus),
+      showPulse: frontendStatus === 'ok',
     },
     {
-      title: 'API',
-      value: coreLabel(health.api?.status, 'OK', 'Fehler'),
+      title: 'Server/API',
+      value: coreLabel(serverStatus, 'Online', 'Offline'),
       subtitle:
-        health.api?.responseTimeMs != null && health.api.responseTimeMs > 0 ?
-          `Antwortzeit ${health.api.responseTimeMs} ms`
-        : 'Nicht verfügbar',
+        typeof api === 'object' && 'responseTimeMs' in (api as object) && (api as { responseTimeMs?: number }).responseTimeMs ?
+          `Antwortzeit ${(api as { responseTimeMs: number }).responseTimeMs} ms`
+        : safeText(
+            typeof api === 'object' && 'message' in (api as object) ? (api as { message?: string }).message : undefined,
+            serverStatus === 'ok' ? 'Healthcheck OK' : 'Healthcheck fehlgeschlagen',
+          ),
       icon: Code2,
-      variant: statusVariant(health.api?.status),
+      variant: statusVariant(serverStatus),
     },
     {
       title: 'Datenbank',
-      value: coreLabel(health.database?.status, 'OK', 'Fehler'),
+      value: apiDown ? notCheckableCardValue() : coreLabel(health.database?.status, 'OK', 'Fehler'),
       subtitle:
-        health.database?.connections != null ?
+        apiDown ?
+          'API offline'
+        : health.database?.connections != null ?
           `Verbindungen ${health.database.connections}`
         : 'Nicht verfügbar',
       icon: Database,
-      variant: statusVariant(health.database?.status),
+      variant: apiDown ? ('neutral' as const) : statusVariant(health.database?.status),
     },
     {
       title: 'Mail',
@@ -105,7 +129,8 @@ export function SystemStatusCards({ health, backups, loading, unavailable }: Sys
       subtitle: mailSubtitle,
       icon: Mail,
       variant:
-        !mailOk ? ('neutral' as const)
+        apiDown ? ('neutral' as const)
+        : !mailOk ? ('neutral' as const)
         : statusVariant(mail?.status),
     },
     {
@@ -114,7 +139,8 @@ export function SystemStatusCards({ health, backups, loading, unavailable }: Sys
       subtitle: paymentsSubtitle,
       icon: CreditCard,
       variant:
-        !paymentsConfiguredFlag(payments) ? ('neutral' as const)
+        apiDown ? ('neutral' as const)
+        : !paymentsConfiguredFlag(payments) ? ('neutral' as const)
         : statusVariant(payments?.status),
     },
     {
@@ -123,37 +149,43 @@ export function SystemStatusCards({ health, backups, loading, unavailable }: Sys
       subtitle: backupSubtitle,
       icon: Cloud,
       variant:
-        backupConfigured === false ? ('neutral' as const)
+        apiDown ? ('neutral' as const)
+        : backupConfigured === false ? ('neutral' as const)
         : statusVariant(health.backups?.status),
     },
     {
       title: 'Speicher',
       value:
-        health.storage?.usedPercent != null && health.storage.usedPercent > 0 ?
+        apiDown ?
+          notCheckableCardValue()
+        : health.storage?.usedPercent != null && health.storage.usedPercent > 0 ?
           `${health.storage.usedPercent} %`
         : 'Nicht verfügbar',
       subtitle:
-        health.storage?.usedGb != null && health.storage?.totalGb ?
+        apiDown ?
+          'API offline'
+        : health.storage?.usedGb != null && health.storage?.totalGb ?
           `${health.storage.usedGb} GB / ${health.storage.totalGb} GB`
         : 'Metrik nicht verfügbar',
       icon: HardDrive,
-      variant: 'cyan' as const,
-      ringPercent: health.storage?.usedPercent ?? 0,
+      variant: apiDown ? ('neutral' as const) : ('cyan' as const),
+      ringPercent: apiDown ? 0 : (health.storage?.usedPercent ?? 0),
       showSparkline: false,
     },
     {
-      title: 'Haupt-App Laufzeit',
-      value: uptimeDisplayValue(health),
-      subtitle: uptimeDisplaySubtitle(health),
+      title: 'Uptime',
+      value: apiDown ? notCheckableCardValue() : uptimeDisplayValue(health),
+      subtitle: apiDown ? 'API offline' : uptimeDisplaySubtitle(health),
       icon: Clock,
-      variant: health.uptimeLabel ? ('ok' as const) : ('neutral' as const),
+      variant:
+        apiDown ? ('neutral' as const)
+        : health.uptimeLabel ? ('ok' as const)
+        : ('neutral' as const),
       showSparkline: false,
     },
   ];
 
-  return (
-    <StatusCardsGrid cards={cards} />
-  );
+  return <StatusCardsGrid cards={cards} />;
 }
 
 function StatusCardsGrid({
@@ -189,7 +221,7 @@ function StatusCardsSkeleton({
   if (unavailable && !loading) {
     return (
       <p className="glass-card p-4 text-sm text-slate-500">
-        Systemstatus: Nicht verfügbar — Haupt-App nicht verbunden.
+        Systemstatus: Nicht verfügbar — Verbindung zur Haupt-App prüfen.
       </p>
     );
   }

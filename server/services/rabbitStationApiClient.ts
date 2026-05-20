@@ -1,3 +1,5 @@
+import { displayOrigin, getMainAppUrls } from './mainAppUrls.js';
+
 const TIMEOUT_MS = 10_000;
 
 export type RabbitStationConfig =
@@ -43,22 +45,19 @@ export function getRabbitStationConfig(): RabbitStationConfig {
 
 export function getConfigStatusDetails() {
   const cfg = getRabbitStationConfig();
-  let apiUrlDisplay: string | null = null;
-  if (cfg.ready) {
-    try {
-      apiUrlDisplay = new URL(cfg.baseUrl).origin;
-    } catch {
-      apiUrlDisplay = 'konfiguriert';
-    }
-  } else if (cfg.apiUrlSet) {
+  const urls = getMainAppUrls();
+  let apiUrlDisplay: string | null = displayOrigin(urls.apiUrl);
+  if (!apiUrlDisplay && !cfg.ready && cfg.apiUrlSet) {
     apiUrlDisplay = 'gesetzt (Verbindung prüfen)';
   }
+  const clientUrlDisplay = displayOrigin(urls.clientUrl);
   return {
     apiConfigured: cfg.ready,
     apiUrlSet: cfg.ready ? true : cfg.apiUrlSet,
     tokenSet: cfg.ready ? true : cfg.tokenSet,
     error: cfg.ready ? null : cfg.error,
     apiUrlDisplay,
+    clientUrlDisplay,
     demoDataDisabled: true,
     refreshIntervalMs: 45_000,
   };

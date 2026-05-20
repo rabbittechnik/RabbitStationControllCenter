@@ -1,5 +1,18 @@
 export type HealthStatus = 'ok' | 'warning' | 'error' | 'unknown';
 
+export interface HealthConnectivityInfo {
+  status: HealthStatus;
+  message: string;
+  url?: string;
+  checkedAt?: string;
+  responseTimeMs?: number;
+  httpStatus?: number | null;
+  errorCode?: string;
+  technicalDetail?: string;
+  railwayHint?: string;
+  adminHealthAvailable?: boolean;
+}
+
 export interface HealthMailInfo {
   status: HealthStatus;
   deliveryRate: number;
@@ -20,6 +33,8 @@ export interface HealthResponse {
   checkedAt: string;
   /** Freitext von der Haupt-App, wenn uptime kein Prozent-Objekt ist */
   uptimeLabel?: string;
+  frontend: HealthConnectivityInfo;
+  serverApi: HealthConnectivityInfo;
   app: { status: HealthStatus; message: string };
   api: { status: HealthStatus; responseTimeMs: number };
   database: { status: HealthStatus; connections: number };
@@ -207,6 +222,11 @@ export interface ControlCenterMeta {
   apiUrlSet?: boolean;
   tokenSet?: boolean;
   lastError?: string;
+  serverApiOnline?: boolean;
+  frontendOnline?: boolean;
+  clientUrlDisplay?: string | null;
+  apiUrlDisplay?: string | null;
+  connectivityBanner?: string;
 }
 
 export interface ControlCenterOverviewResponse extends OverviewData {
@@ -228,6 +248,13 @@ export interface SystemInfoBlock {
   apiConnected?: boolean;
 }
 
+export interface SystemInfoConnectivity {
+  clientUrl?: string;
+  apiUrl?: string;
+  frontend: HealthConnectivityInfo;
+  serverApi: HealthConnectivityInfo;
+}
+
 export interface SystemInfo {
   environment: string;
   region: string;
@@ -242,6 +269,7 @@ export interface SystemInfo {
   commitHash: string;
   mainApp?: SystemInfoBlock;
   controlCenter?: SystemInfoBlock;
+  connectivity?: SystemInfoConnectivity;
 }
 
 export interface ChartPoint {

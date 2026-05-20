@@ -1,5 +1,16 @@
 import type { BackupStatus, HealthResponse, HealthStatus } from '../types';
 
+export const NOT_CHECKABLE_LABEL = 'Nicht prüfbar';
+
+export function serverApiOffline(health: HealthResponse | null | undefined): boolean {
+  if (!health) return true;
+  return health.serverApi?.status === 'error' || health.api?.status === 'error';
+}
+
+export function notCheckableCardValue(): string {
+  return NOT_CHECKABLE_LABEL;
+}
+
 export function mailConfiguredFlag(mail: HealthResponse['mail'] | null | undefined): boolean {
   return mail?.configured === true || mail?.status === 'ok';
 }

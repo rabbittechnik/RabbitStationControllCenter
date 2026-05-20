@@ -20,6 +20,15 @@ import type { ControlCenterMeta, OverviewData } from '../types.js';
 import { applyTenantActivityFromLogs } from './logFormat.js';
 import { refineHealthComponents } from './healthDisplay.js';
 import { sanitizeUserFacingError } from './displayErrors.js';
+import { runConnectivityChecks } from './connectivityCheck.js';
+import {
+  buildConnectivityMeta,
+  buildHealthFromConnectivity,
+  buildPartialOverviewData,
+  mergeConnectivityIntoHealth,
+  notCheckableBackup,
+} from './connectivityHealth.js';
+import { displayOrigin, getMainAppUrls } from './mainAppUrls.js';
 
 export type LoadResult = {
   data: OverviewData;
@@ -28,13 +37,18 @@ export type LoadResult = {
 
 export function buildErrorMeta(lastError?: string): ControlCenterMeta {
   const cfg = getRabbitStationConfig();
+  const urls = getMainAppUrls();
   return {
     source: 'error',
     apiConfigured: cfg.ready,
     apiUrlSet: cfg.ready ? true : cfg.apiUrlSet,
     tokenSet: cfg.ready ? true : cfg.tokenSet,
+    serverApiOnline: false,
+    frontendOnline: false,
+    clientUrlDisplay: displayOrigin(urls.clientUrl),
+    apiUrlDisplay: displayOrigin(urls.apiUrl),
     message: cfg.ready
-      ? 'RabbitStation Haupt-App ist nicht verbunden.'
+      ? 'RabbitStation Haupt-App Server/API ist nicht verbunden.'
       : 'Bitte RABBITSTATION_API_URL und CONTROL_CENTER_API_TOKEN konfigurieren.',
     lastError: lastError ? sanitizeUserFacingError(lastError) : undefined,
   };
@@ -43,11 +57,16 @@ export function buildErrorMeta(lastError?: string): ControlCenterMeta {
 /** Haupt-App erreichbar, aber Anzeige/Mapping teilweise fehlgeschlagen. */
 export function buildMappingErrorMeta(technicalDetail?: string): ControlCenterMeta {
   const cfg = getRabbitStationConfig();
+  const urls = getMainAppUrls();
   return {
     source: 'degraded',
     apiConfigured: true,
     apiUrlSet: cfg.ready ? true : cfg.apiUrlSet,
     tokenSet: cfg.ready ? true : cfg.tokenSet,
+    serverApiOnline: true,
+    frontendOnline: true,
+    clientUrlDisplay: displayOrigin(urls.clientUrl),
+    apiUrlDisplay: displayOrigin(urls.apiUrl),
     message: 'Control-Center-Anzeige konnte Statusdaten nicht verarbeiten.',
     lastError: technicalDetail ? sanitizeUserFacingError(technicalDetail) : undefined,
   };
@@ -77,8 +96,25 @@ async function fetchLiveHealthBundle(): Promise<{
 
 export async function fetchLiveHealth() {
   const cfg = getRabbitStationConfig();
+  const urls = getMainAppUrls();
+  const connectivity = await runConnectivityChecks(urls, cfg.ready ? cfg.token : undefined);
+
+  if (connectivity.serverApi.status === 'error') {
+    const health = buildHealthFromConnectivity(connectivity);
+    return {
+      health,
+      backups: notCheckableBackup(connectivity.checkedAt),
+      systemInfo: buildPartialOverviewData(health, connectivity, cfg).systemInfo,
+      responseTimeMs: connectivity.serverApi.responseTimeMs ?? 0,
+    };
+  }
+
   if (!cfg.ready) throw new RabbitStationApiError(cfg.error, 'config_missing');
-  return fetchLiveHealthBundle();
+  const bundle = await fetchLiveHealthBundle();
+  return {
+    ...bundle,
+    health: mergeConnectivityIntoHealth(bundle.health, connectivity),
+  };
 }
 
 export async function fetchLiveTenants() {
@@ -206,11 +242,48 @@ export async function fetchLiveBackups() {
   return { backups: mapBackupStatus(data) };
 }
 
-/** Lädt ausschließlich Live-Daten — kein Demo-Fallback. */
+/** Lädt Live-Daten — mit getrennten Client- und API-Probes vor Admin-Aufrufen. */
 export async function fetchLiveOverview(): Promise<LoadResult> {
+  const urls = getMainAppUrls();
   const cfg = getRabbitStationConfig();
+  const adminToken = cfg.ready ? cfg.token : undefined;
+  const connectivity = await runConnectivityChecks(urls, adminToken);
+
+  if (!urls.apiUrl) {
+    const health = buildHealthFromConnectivity(connectivity);
+    return {
+      meta: buildConnectivityMeta(connectivity, cfg, urls),
+      data: buildPartialOverviewData(health, connectivity, cfg),
+    };
+  }
+
+  if (connectivity.serverApi.status !== 'ok') {
+    const health = buildHealthFromConnectivity(connectivity);
+    let refined = health;
+    try {
+      refined = refineHealthComponents(health, notCheckableBackup(connectivity.checkedAt), []);
+    } catch {
+      refined = health;
+    }
+    return {
+      meta: buildConnectivityMeta(connectivity, cfg, urls),
+      data: buildPartialOverviewData(refined, connectivity, cfg),
+    };
+  }
+
   if (!cfg.ready) {
-    throw new RabbitStationApiError(cfg.error, 'config_missing');
+    const health = buildHealthFromConnectivity(connectivity);
+    const meta = buildConnectivityMeta(connectivity, cfg, urls);
+    return {
+      meta: {
+        ...meta,
+        source: 'error',
+        serverApiOnline: true,
+        message: cfg.error,
+        lastError: cfg.error,
+      },
+      data: buildPartialOverviewData(health, connectivity, cfg),
+    };
   }
 
   const [healthBundle, tenantsRes, subsRaw, logsRaw, securityRes] = await Promise.all([
@@ -233,9 +306,9 @@ export async function fetchLiveOverview(): Promise<LoadResult> {
   );
   const tenants = applyTenantActivityFromLogs(tenantsRes.tenants, logs);
 
-  let health = healthBundle.health;
+  let health = mergeConnectivityIntoHealth(healthBundle.health, connectivity);
   try {
-    health = refineHealthComponents(healthBundle.health, healthBundle.backups, logs);
+    health = refineHealthComponents(health, healthBundle.backups, logs);
   } catch (e) {
     const raw = e instanceof Error ? e.message : 'Unbekannter Fehler';
     const msg = sanitizeUserFacingError(raw);
@@ -247,6 +320,12 @@ export async function fetchLiveOverview(): Promise<LoadResult> {
   const ccHours = Math.floor((ccUptimeSec % 86400) / 3600);
   const systemInfo = {
     ...healthBundle.systemInfo,
+    connectivity: {
+      clientUrl: urls.clientUrl ?? undefined,
+      apiUrl: urls.apiUrl ?? undefined,
+      frontend: connectivity.frontend,
+      serverApi: connectivity.serverApi,
+    },
     mainApp: {
       label: 'RabbitStation Haupt-App',
       environment: healthBundle.systemInfo.environment,
@@ -272,10 +351,13 @@ export async function fetchLiveOverview(): Promise<LoadResult> {
 
   return {
     meta: {
+      ...buildConnectivityMeta(connectivity, cfg, urls),
       source: 'live',
       apiConfigured: true,
       apiUrlSet: true,
       tokenSet: true,
+      serverApiOnline: true,
+      frontendOnline: connectivity.frontend.status === 'ok',
     },
     data: {
       health,

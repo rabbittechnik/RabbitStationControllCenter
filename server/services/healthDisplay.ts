@@ -26,11 +26,24 @@ export function computeOverallDisplayStatus(
     message: 'Nicht verfügbar',
   };
 
+  const serverDown =
+    health.serverApi?.status === 'error' ||
+    health.api?.status === 'error';
+  const frontendDown =
+    health.frontend?.status === 'error' || health.app?.status === 'error';
+
+  if (serverDown) {
+    return { status: 'error', label: 'outage' };
+  }
+
+  if (frontendDown) {
+    return { status: 'warning', label: 'partial' };
+  }
+
   const critical =
-    health.app?.status === 'error' ||
-    health.api?.status === 'error' ||
     health.database?.status === 'error' ||
-    (health.errors?.length ?? 0) > 0;
+    ((health.errors?.length ?? 0) > 0 &&
+      !(health.errors?.every((e) => e.includes('Nicht prüfbar')) ?? false));
 
   if (critical) {
     return { status: 'error', label: 'outage' };

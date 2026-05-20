@@ -5,11 +5,12 @@ import { TenantSubscriptionManager } from '../../components/control-center/Tenan
 import { CC_ROUTES } from '../../control-center/routes';
 
 export function TenantsPage() {
-  const { data, isLive, loading, search, refresh } = useControlCenter();
+  const { data, isLive, loading, search, refresh, serverApiOnline } = useControlCenter();
   const navigate = useNavigate();
 
   const empty =
-    !isLive && !loading ? 'Tenants konnten nicht geladen werden.'
+    !serverApiOnline && !loading ?
+      'Haupt-App API offline – Daten können aktuell nicht geladen werden.'
     : isLive && (data?.tenants?.length ?? 0) === 0 ? 'Keine Daten vorhanden'
     : undefined;
 

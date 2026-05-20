@@ -234,13 +234,48 @@ export function normalizeHealthResponse(partial?: Partial<HealthResponse> | null
     );
   }
 
+  const frontend = mergeComponent(
+    { status: 'unknown' as HealthStatus, message: 'Nicht verfügbar', httpStatus: null as number | null },
+    source?.frontend ?? source?.app,
+    (c) => ({
+      status: parseStatus(c?.status, 'unknown'),
+      message: safeText(c?.message, app.message),
+      url: typeof (source?.frontend as { url?: string } | undefined)?.url === 'string' ? source!.frontend!.url : undefined,
+      checkedAt: typeof (source?.frontend as { checkedAt?: string } | undefined)?.checkedAt === 'string' ? source!.frontend!.checkedAt : checkedAt,
+      responseTimeMs: safeNumber((c as { responseTimeMs?: number })?.responseTimeMs, 0) || undefined,
+      httpStatus: (source?.frontend as { httpStatus?: number | null } | undefined)?.httpStatus ?? null,
+      errorCode: (source?.frontend as { errorCode?: string } | undefined)?.errorCode,
+      technicalDetail: (source?.frontend as { technicalDetail?: string } | undefined)?.technicalDetail,
+      railwayHint: (source?.frontend as { railwayHint?: string } | undefined)?.railwayHint,
+    }),
+  );
+
+  const serverApi = mergeComponent(
+    { status: 'unknown' as HealthStatus, message: 'Nicht verfügbar', httpStatus: null as number | null },
+    source?.serverApi ?? source?.api,
+    (c) => ({
+      status: parseStatus(c?.status, 'unknown'),
+      message: safeText((source?.serverApi as { message?: string } | undefined)?.message, api.status === 'ok' ? 'Server/API erreichbar' : 'Server/API nicht erreichbar'),
+      url: typeof (source?.serverApi as { url?: string } | undefined)?.url === 'string' ? source!.serverApi!.url : undefined,
+      checkedAt: typeof (source?.serverApi as { checkedAt?: string } | undefined)?.checkedAt === 'string' ? source!.serverApi!.checkedAt : checkedAt,
+      responseTimeMs: safeNumber((c as { responseTimeMs?: number })?.responseTimeMs ?? api.responseTimeMs, 0),
+      httpStatus: (source?.serverApi as { httpStatus?: number | null } | undefined)?.httpStatus ?? null,
+      errorCode: (source?.serverApi as { errorCode?: string } | undefined)?.errorCode,
+      technicalDetail: (source?.serverApi as { technicalDetail?: string } | undefined)?.technicalDetail,
+      railwayHint: (source?.serverApi as { railwayHint?: string } | undefined)?.railwayHint,
+      adminHealthAvailable: (source?.serverApi as { adminHealthAvailable?: boolean } | undefined)?.adminHealthAvailable,
+    }),
+  );
+
   return {
     overallStatus: parseStatus(source?.overallStatus, 'unknown'),
     overallLabel: source?.overallLabel,
     checkedAt,
     uptimeLabel: typeof source?.uptimeLabel === 'string' ? source.uptimeLabel : undefined,
-    app,
-    api,
+    frontend,
+    serverApi,
+    app: { status: frontend.status, message: frontend.message },
+    api: { status: serverApi.status, responseTimeMs: serverApi.responseTimeMs ?? api.responseTimeMs },
     database,
     mail,
     payments,

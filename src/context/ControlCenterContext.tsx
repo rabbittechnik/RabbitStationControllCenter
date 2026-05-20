@@ -20,6 +20,7 @@ export type ConfigDetails = {
   tokenSet: boolean;
   error: string | null;
   apiUrlDisplay?: string | null;
+  clientUrlDisplay?: string | null;
   demoDataDisabled?: boolean;
   refreshIntervalMs?: number;
 };
@@ -33,6 +34,8 @@ type ControlCenterContextValue = {
   backupChecking: boolean;
   loadError: string | null;
   isLive: boolean;
+  serverApiOnline: boolean;
+  frontendOnline: boolean;
   isDegraded: boolean;
   technicalError: string | null;
   search: string;
@@ -80,7 +83,9 @@ export function ControlCenterProvider({ children }: { children: ReactNode }) {
   const [search, setSearch] = useState('');
   const [technicalError, setTechnicalError] = useState<string | null>(null);
 
-  const isLive = meta?.source === 'live' && meta.apiConfigured === true;
+  const serverApiOnline = meta?.serverApiOnline === true;
+  const frontendOnline = meta?.frontendOnline === true;
+  const isLive = serverApiOnline;
   const isDegraded = meta?.source === 'degraded';
 
   const loadAll = useCallback(async () => {
@@ -105,7 +110,7 @@ export function ControlCenterProvider({ children }: { children: ReactNode }) {
     const cfg = cfgResult.data as ConfigDetails;
     setConfig(cfg);
 
-    if (!cfg.apiConfigured) {
+    if (!cfg.apiUrlSet) {
       setMeta(metaFromConfigStatus(cfg));
       setData(null);
       return;
@@ -204,6 +209,8 @@ export function ControlCenterProvider({ children }: { children: ReactNode }) {
       backupChecking,
       loadError,
       isLive,
+      serverApiOnline,
+      frontendOnline,
       isDegraded,
       technicalError,
       search,
@@ -220,6 +227,8 @@ export function ControlCenterProvider({ children }: { children: ReactNode }) {
       backupChecking,
       loadError,
       isLive,
+      serverApiOnline,
+      frontendOnline,
       isDegraded,
       technicalError,
       search,
