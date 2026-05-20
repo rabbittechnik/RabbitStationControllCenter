@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   formatLogAction,
+  formatLogMessage,
   enrichLogs,
   applyTenantActivityFromLogs,
   hasRecentMailFailure,
@@ -22,6 +23,37 @@ describe('formatLogAction', () => {
 
   it('formats unknown actions readably', () => {
     assert.equal(formatLogAction('custom_event'), 'Custom Event');
+  });
+
+  it('maps payment-related actions', () => {
+    assert.equal(formatLogAction('payment_started'), 'Kunde hat Zahlung gestartet');
+    assert.equal(formatLogAction('subscription_manually_activated'), 'Abo manuell freigeschaltet');
+    assert.equal(formatLogAction('payment_failed'), 'Zahlung fehlgeschlagen');
+  });
+});
+
+describe('formatLogMessage', () => {
+  it('appends plan and provider for payment_started', () => {
+    const msg = formatLogMessage('payment_started', {
+      requestedPlan: 'pro',
+      paymentProvider: 'sumup',
+      userEmail: 'kunde@test.de',
+    });
+    assert.match(msg, /Kunde hat Zahlung gestartet/);
+    assert.match(msg, /Pro/);
+    assert.match(msg, /SumUp/);
+    assert.match(msg, /kunde@test.de/);
+  });
+
+  it('appends reference for manual activation', () => {
+    const msg = formatLogMessage('subscription_manually_activated', {
+      plan: 'pro',
+      paymentProvider: 'sumup',
+      paymentReference: 'SumUp geprüft 20.05.2026',
+      source: 'control_center',
+    });
+    assert.match(msg, /manuell freigeschaltet/i);
+    assert.match(msg, /SumUp geprüft/);
   });
 });
 

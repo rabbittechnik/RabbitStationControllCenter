@@ -117,6 +117,14 @@ export interface Tenant {
   current_period_start?: string | null;
   current_period_end?: string | null;
   blocked_reason?: string | null;
+  station_name?: string | null;
+  subscription_status?: string;
+  payment_provider?: string | null;
+  payment_status?: string | null;
+  requested_plan?: string | null;
+  payment_started_at?: string | null;
+  payment_confirmed_at?: string | null;
+  payment_reference?: string | null;
 }
 
 export interface SubscriptionSummary {
@@ -133,6 +141,9 @@ export interface SubscriptionSummary {
   proCustomers: number;
   multiStationCustomers: number;
   openPayments: number;
+  pendingPayments?: number;
+  sumupPaymentsStarted?: number;
+  manualReviewCount?: number;
   monthlyRevenue: number;
   monthlyRevenueCurrency: string;
   monthlyRevenueTrend: string;

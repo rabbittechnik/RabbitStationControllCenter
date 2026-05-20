@@ -16,9 +16,46 @@ const ACTION_LABELS: Record<string, string> = {
   'subscription.changed': 'Abo geändert',
   trial_extended: 'Testzeitraum verlängert',
   trial_extend_failed: 'Testzeitraum-Verlängerung fehlgeschlagen',
+  payment_started: 'Kunde hat Zahlung gestartet',
+  subscription_manually_activated: 'Abo manuell freigeschaltet',
+  payment_failed: 'Zahlung fehlgeschlagen',
+  subscription_plan_changed: 'Plan geändert',
   setup_completed: 'Setup abgeschlossen',
   tour_completed: 'Einführung abgeschlossen',
 };
+
+function planLabelShort(plan: string): string {
+  const p = plan.toLowerCase().replace(/-/g, '_');
+  if (p === 'starter') return 'Starter';
+  if (p === 'pro') return 'Pro';
+  if (p === 'multi_station') return 'Multi-Station';
+  return plan;
+}
+
+export function formatLogMessage(action: string, meta: LogMeta): string {
+  const key = action.trim().toLowerCase();
+  const parts: string[] = [formatLogAction(action)];
+
+  if (key === 'payment_started') {
+    if (meta.requestedPlan) parts.push(`Plan: ${planLabelShort(meta.requestedPlan)}`);
+    if (meta.paymentProvider) parts.push(`Anbieter: ${meta.paymentProvider === 'sumup' ? 'SumUp' : meta.paymentProvider}`);
+    if (meta.userEmail) parts.push(meta.userEmail);
+  } else if (key === 'subscription_manually_activated') {
+    if (meta.plan) parts.push(`Plan: ${planLabelShort(meta.plan)}`);
+    if (meta.paymentProvider) parts.push(`Anbieter: ${meta.paymentProvider === 'sumup' ? 'SumUp' : meta.paymentProvider}`);
+    if (meta.paymentReference) parts.push(meta.paymentReference);
+    if (meta.source) parts.push(`Quelle: ${meta.source}`);
+  } else if (key === 'payment_failed') {
+    if (meta.paymentReference) parts.push(meta.paymentReference);
+    if (meta.safeMessage) parts.push(meta.safeMessage);
+  } else if (key === 'trial_extended') {
+    if (meta.daysAdded != null) parts.push(`+${meta.daysAdded} Tage`);
+    if (meta.newTrialEnd) parts.push(`bis ${meta.newTrialEnd.slice(0, 10)}`);
+    if (meta.note) parts.push(meta.note);
+  }
+
+  return parts.filter(Boolean).join(' · ');
+}
 
 export function formatLogAction(action: string): string {
   const key = action.trim().toLowerCase();
@@ -77,6 +114,12 @@ type LogMeta = {
   note?: string;
   source?: string;
   plan?: string;
+  requestedPlan?: string;
+  oldPlan?: string;
+  paymentProvider?: string;
+  paymentStatus?: string;
+  paymentReference?: string;
+  paymentUrlKey?: string;
 };
 
 function parseMetadata(raw?: string | null): LogMeta {
@@ -121,6 +164,27 @@ function parseMetadata(raw?: string | null): LogMeta {
       note: typeof m.note === 'string' ? m.note : undefined,
       source: typeof m.source === 'string' ? m.source : undefined,
       plan: typeof m.plan === 'string' ? m.plan : undefined,
+      requestedPlan:
+        typeof m.requestedPlan === 'string' ? m.requestedPlan
+        : typeof m.requested_plan === 'string' ? m.requested_plan
+        : undefined,
+      oldPlan: typeof m.oldPlan === 'string' ? m.oldPlan : undefined,
+      paymentProvider:
+        typeof m.paymentProvider === 'string' ? m.paymentProvider
+        : typeof m.payment_provider === 'string' ? m.payment_provider
+        : undefined,
+      paymentStatus:
+        typeof m.paymentStatus === 'string' ? m.paymentStatus
+        : typeof m.payment_status === 'string' ? m.payment_status
+        : undefined,
+      paymentReference:
+        typeof m.paymentReference === 'string' ? m.paymentReference
+        : typeof m.payment_reference === 'string' ? m.payment_reference
+        : undefined,
+      paymentUrlKey:
+        typeof m.paymentUrlKey === 'string' ? m.paymentUrlKey
+        : typeof m.payment_url_key === 'string' ? m.payment_url_key
+        : undefined,
     };
   } catch {
     return {};
@@ -183,7 +247,13 @@ export function enrichLogs(rows: RawLog[], tenants: Tenant[]): SystemLog[] {
         'Unbekannter Tenant'
       : 'Plattform';
 
-    const subline = tenantOperator ?? (r.tenant_id ? undefined : 'Systemweit');
+    const paymentDetail =
+      meta.paymentReference ??
+      (meta.requestedPlan ? `Gewünscht: ${planLabelShort(meta.requestedPlan)}` : undefined);
+    const subline =
+      paymentDetail ??
+      tenantOperator ??
+      (r.tenant_id ? undefined : 'Systemweit');
 
     return {
       id: typeof r.id === 'number' ? r.id : i + 1,
@@ -193,7 +263,7 @@ export function enrichLogs(rows: RawLog[], tenants: Tenant[]): SystemLog[] {
       category: r.entity_type ?? 'audit',
       action,
       action_label: formatLogAction(action),
-      message: formatLogAction(action),
+      message: formatLogMessage(action, meta),
       tenant_name: tenantName ?? undefined,
       tenant_slug: tenantSlug ?? undefined,
       tenant_operator: tenantOperator ?? undefined,

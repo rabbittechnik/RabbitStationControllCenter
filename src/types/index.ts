@@ -108,6 +108,13 @@ export interface Tenant {
   current_period_start?: string | null;
   current_period_end?: string | null;
   blocked_reason?: string | null;
+  subscription_status?: string;
+  payment_provider?: string | null;
+  payment_status?: string | null;
+  requested_plan?: string | null;
+  payment_started_at?: string | null;
+  payment_confirmed_at?: string | null;
+  payment_reference?: string | null;
 }
 
 export type SubscriptionPlanId = 'starter' | 'pro' | 'multi_station';
@@ -118,7 +125,8 @@ export type SubscriptionStatusId =
   | 'expired'
   | 'past_due'
   | 'cancelled'
-  | 'blocked';
+  | 'blocked'
+  | 'pending_payment';
 
 export interface TenantSubscriptionPatch {
   plan?: SubscriptionPlanId | string;
@@ -128,6 +136,10 @@ export interface TenantSubscriptionPatch {
   current_period_end?: string;
   blocked_reason?: string | null;
   note?: string;
+  payment_status?: string;
+  payment_provider?: string;
+  payment_reference?: string;
+  payment_confirmed_at?: string;
 }
 
 export interface OverviewData {
@@ -155,6 +167,9 @@ export interface SubscriptionSummary {
   proCustomers: number;
   multiStationCustomers: number;
   openPayments: number;
+  pendingPayments?: number;
+  sumupPaymentsStarted?: number;
+  manualReviewCount?: number;
   monthlyRevenue: number;
   monthlyRevenueCurrency: string;
   monthlyRevenueTrend: string;

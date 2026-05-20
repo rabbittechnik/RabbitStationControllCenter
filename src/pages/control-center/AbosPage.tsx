@@ -12,6 +12,8 @@ import {
   ExtendTrialModal,
   type ExtendTrialPayload,
 } from '../../components/control-center/ExtendTrialModal';
+import { ManualActivatePaymentModal } from '../../components/control-center/ManualActivatePaymentModal';
+import { MarkPaymentFailedModal } from '../../components/control-center/MarkPaymentFailedModal';
 import { TenantDetailsModal } from '../../components/control-center/TenantDetailsModal';
 import type { TenantAction } from '../../components/control-center/TenantActionMenu';
 import { CC_ROUTES } from '../../control-center/routes';
@@ -19,7 +21,14 @@ import { subscriptionErrorMessage } from '../../utils/subscriptionMessages';
 import { formatTrialEnd } from '../../utils/format';
 import { trialExtendErrorMessage } from '../../utils/trialExtend';
 
-type ModalKind = 'details' | 'plan' | 'trial' | 'activate' | null;
+type ModalKind =
+  | 'details'
+  | 'plan'
+  | 'trial'
+  | 'activate'
+  | 'release'
+  | 'paymentFailed'
+  | null;
 
 export function AbosPage() {
   const { data, isLive, loading, search, refresh, serverApiOnline } = useControlCenter();
@@ -30,6 +39,7 @@ export function AbosPage() {
 
   const paymentsConfigured = data?.health?.payments?.configured !== false;
   const paymentsMsg = data?.health?.payments?.message;
+  const apiOffline = !serverApiOnline && !loading;
 
   const patchSubscription = useCallback(
     async (tenantId: string, patch: TenantSubscriptionPatch) => {
@@ -39,6 +49,11 @@ export function AbosPage() {
     },
     [refresh],
   );
+
+  const showFlash = (message: string, type: 'success' | 'error') => {
+    setFlash({ message, type });
+    window.setTimeout(() => setFlash(null), 8000);
+  };
 
   const handleAction = async (action: TenantAction, tenant: Tenant) => {
     setActiveTenant(tenant);
@@ -56,17 +71,29 @@ export function AbosPage() {
       case 'activate':
         setModal('activate');
         break;
+      case 'releaseSubscription':
+        setModal('release');
+        break;
+      case 'markPaymentFailed':
+        setModal('paymentFailed');
+        break;
+      case 'keepPaymentOpen':
+        showFlash('Zahlung bleibt auf „ausstehend“ – keine Änderung vorgenommen.', 'success');
+        setActiveTenant(null);
+        break;
       case 'block':
         await patchSubscription(tenant.id, {
           subscription_status: 'blocked',
           blocked_reason: 'Gesperrt über Control Center',
         });
+        showFlash(`Tenant „${tenant.name}" gesperrt.`, 'success');
         break;
       case 'unblock':
         await patchSubscription(tenant.id, {
           subscription_status: 'active',
           blocked_reason: null,
         });
+        showFlash(`Tenant „${tenant.name}" entsperrt.`, 'success');
         break;
       case 'logs':
         navigate(`${CC_ROUTES.logs}?tenant=${encodeURIComponent(tenant.id)}`);
@@ -79,7 +106,25 @@ export function AbosPage() {
   const handleSavePatch = async (patch: TenantSubscriptionPatch) => {
     if (!activeTenant) return;
     await patchSubscription(activeTenant.id, patch);
+    showFlash('Änderung gespeichert.', 'success');
     setModal(null);
+    setActiveTenant(null);
+  };
+
+  const handleManualActivate = async (patch: TenantSubscriptionPatch) => {
+    if (!activeTenant) return;
+    await patchSubscription(activeTenant.id, patch);
+    showFlash(`Abo für „${activeTenant.name}" freigeschaltet.`, 'success');
+    setModal(null);
+    setActiveTenant(null);
+  };
+
+  const handlePaymentFailed = async (patch: TenantSubscriptionPatch) => {
+    if (!activeTenant) return;
+    await patchSubscription(activeTenant.id, patch);
+    showFlash(`Zahlung für „${activeTenant.name}" als fehlgeschlagen markiert.`, 'success');
+    setModal(null);
+    setActiveTenant(null);
   };
 
   const handleExtendTrial = async (payload: ExtendTrialPayload) => {
@@ -95,24 +140,28 @@ export function AbosPage() {
       data?: { newTrialEnd?: string };
     };
     const newEnd = response.data?.newTrialEnd;
-    setFlash({
-      message: newEnd
+    showFlash(
+      newEnd
         ? `Testzeitraum wurde verlängert. Neues Trial-Ende: ${formatTrialEnd(newEnd)}`
         : 'Testzeitraum wurde verlängert.',
-      type: 'success',
-    });
-    window.setTimeout(() => setFlash(null), 8000);
+      'success',
+    );
     setModal(null);
     setActiveTenant(null);
     await refresh();
     return { newTrialEnd: newEnd ?? '' };
   };
 
+  const tenants = isLive && !apiOffline ? (data?.tenants ?? []) : [];
+  const hasPending = tenants.some(
+    (t) => t.payment_status === 'pending' || t.status === 'pending_payment',
+  );
+
   return (
     <>
       <PageHeader
         title="Abos"
-        subtitle="Plan-, Testphasen- und Abo-Verwaltung"
+        subtitle="SumUp-Zahlungen, manuelle Freischaltung und Abo-Verwaltung"
       />
       {!paymentsConfigured ?
         <p className="mb-4 rounded-lg border border-white/10 bg-navy-900/60 px-4 py-2 text-xs text-slate-400">
@@ -131,18 +180,23 @@ export function AbosPage() {
         </div>
       : null}
       <SubscriptionRevenueCards
-        data={isLive ? (data?.subscriptions ?? null) : null}
+        data={isLive && !apiOffline ? (data?.subscriptions ?? null) : null}
         unavailable={!isLive && !loading}
         loading={loading && isLive}
+        apiOffline={apiOffline}
       />
       <div className="mt-4">
         <AbosTable
-          tenants={isLive ? (data?.tenants ?? []) : []}
+          tenants={tenants}
           search={search}
-          disabled={!isLive}
+          disabled={!isLive || apiOffline}
           emptyMessage={
-            !serverApiOnline && !loading ?
-              'Haupt-App API offline – Daten können aktuell nicht geladen werden.'
+            apiOffline ?
+              'Haupt-App nicht erreichbar.'
+            : !hasPending && tenants.length > 0 ?
+              undefined
+            : tenants.length === 0 && !loading ?
+              'Keine offenen SumUp-Zahlungen.'
             : undefined
           }
           onAction={(action, tenant) => void handleAction(action, tenant)}
@@ -170,6 +224,24 @@ export function AbosPage() {
         open={modal === 'activate'}
         onClose={() => setModal(null)}
         onSave={handleSavePatch}
+      />
+      <ManualActivatePaymentModal
+        tenant={activeTenant}
+        open={modal === 'release'}
+        onClose={() => {
+          setModal(null);
+          setActiveTenant(null);
+        }}
+        onActivate={handleManualActivate}
+      />
+      <MarkPaymentFailedModal
+        tenant={activeTenant}
+        open={modal === 'paymentFailed'}
+        onClose={() => {
+          setModal(null);
+          setActiveTenant(null);
+        }}
+        onConfirm={handlePaymentFailed}
       />
     </>
   );

@@ -34,6 +34,26 @@ describe('mapTenants', () => {
     assert.equal(rows[0].operator, 'owner@test.de');
   });
 
+  it('maps payment fields from Haupt-App API', () => {
+    const rows = mapTenants([
+      {
+        id: 't-pay',
+        companyName: 'Pay GmbH',
+        plan: 'starter',
+        subscriptionStatus: 'pending_payment',
+        paymentProvider: 'sumup',
+        paymentStatus: 'pending',
+        requestedPlan: 'pro',
+        paymentStartedAt: '2026-05-19T10:00:00.000Z',
+      },
+    ]);
+    assert.equal(rows[0].status, 'pending_payment');
+    assert.equal(rows[0].payment_provider, 'sumup');
+    assert.equal(rows[0].payment_status, 'pending');
+    assert.equal(rows[0].requested_plan, 'pro');
+    assert.equal(rows[0].payment_started_at, '2026-05-19T10:00:00.000Z');
+  });
+
   it('marks blocked when blockedReason is set', () => {
     const rows = mapTenants([
       {
@@ -62,7 +82,24 @@ describe('mapSubscriptionSummary', () => {
     assert.equal(summary.proCustomers, 1);
     assert.equal(summary.multiStationCustomers, 1);
     assert.equal(summary.trialsExpiringToday, 1);
-    assert.equal(summary.monthlyRevenue, 0);
-    assert.equal(summary.monthlyRevenueTrend, 'Noch keine Zahlungsdaten verfügbar');
+    assert.equal(summary.monthlyRevenue, 19.9);
+    assert.match(summary.monthlyRevenueTrend ?? '', /aktiven Abos/);
+  });
+
+  it('counts pending SumUp payments in summary', () => {
+    const tenants = mapTenants([
+      {
+        id: 'p1',
+        plan: 'starter',
+        subscriptionStatus: 'pending_payment',
+        paymentStatus: 'pending',
+        paymentProvider: 'sumup',
+      },
+      { id: 'p2', plan: 'pro', subscriptionStatus: 'active', paymentStatus: 'confirmed' },
+    ]);
+    const summary = mapSubscriptionSummary({ byStatus: [] }, tenants);
+    assert.equal(summary.pendingPayments, 1);
+    assert.equal(summary.sumupPaymentsStarted, 1);
+    assert.equal(summary.manualReviewCount, 1);
   });
 });

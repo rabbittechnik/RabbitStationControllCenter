@@ -11,8 +11,10 @@ import {
   MoreHorizontal,
   Timer,
   Unlock,
+  XCircle,
 } from 'lucide-react';
 import type { Tenant } from '../../types';
+import { isPaymentPending } from '../../utils/paymentDisplay';
 import { canExtendTrial, extendTrialDisabledReason } from '../../utils/trialExtend';
 import { ActionMenuDivider, ActionMenuItem, ActionMenuPortal } from './ActionMenuPortal';
 
@@ -23,7 +25,8 @@ export type TenantAction =
   | 'extendTrial'
   | 'activate'
   | 'releaseSubscription'
-  | 'checkPayment'
+  | 'keepPaymentOpen'
+  | 'markPaymentFailed'
   | 'block'
   | 'unblock'
   | 'logs'
@@ -42,7 +45,7 @@ export function TenantActionMenu({ tenant, disabled, onAction }: TenantActionMen
   const isBlocked = tenant.status === 'blocked' || tenant.locked === 1;
   const extendAllowed = canExtendTrial(tenant);
   const extendTooltip = extendTrialDisabledReason(tenant);
-  const paymentPending = tenant.status === 'past_due';
+  const paymentPending = isPaymentPending(tenant);
 
   const run = (action: TenantAction) => {
     onAction(action, tenant);
@@ -75,16 +78,19 @@ export function TenantActionMenu({ tenant, disabled, onAction }: TenantActionMen
       label: 'Abo freischalten',
       icon: <Unlock className="h-4 w-4" />,
       hidden: !paymentPending,
-      disabled: true,
-      title: 'Demnächst verfügbar',
     },
     {
-      key: 'checkPayment',
-      label: 'Zahlung prüfen',
+      key: 'keepPaymentOpen',
+      label: 'Zahlung offen lassen',
       icon: <CreditCard className="h-4 w-4" />,
       hidden: !paymentPending,
-      disabled: true,
-      title: 'Demnächst verfügbar',
+      title: 'Status bleibt „Zahlung ausstehend“',
+    },
+    {
+      key: 'markPaymentFailed',
+      label: 'Zahlung fehlgeschlagen markieren',
+      icon: <XCircle className="h-4 w-4" />,
+      hidden: !paymentPending,
     },
     {
       key: isBlocked ? 'unblock' : 'block',

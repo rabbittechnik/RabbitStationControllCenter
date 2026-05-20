@@ -10,11 +10,21 @@ import { trialExtendErrorMessage } from '../../utils/trialExtend';
 import { ActivateSubscriptionModal } from './ActivateSubscriptionModal';
 import { ChangePlanModal } from './ChangePlanModal';
 import { ExtendTrialModal, type ExtendTrialPayload } from './ExtendTrialModal';
+import { ManualActivatePaymentModal } from './ManualActivatePaymentModal';
+import { MarkPaymentFailedModal } from './MarkPaymentFailedModal';
 import { SupportAccessModal } from './SupportAccessModal';
 import { TenantDetailsModal } from './TenantDetailsModal';
 import { TenantOverviewTable } from './TenantOverviewTable';
 
-type ModalKind = 'details' | 'plan' | 'trial' | 'activate' | 'support' | null;
+type ModalKind =
+  | 'details'
+  | 'plan'
+  | 'trial'
+  | 'activate'
+  | 'release'
+  | 'paymentFailed'
+  | 'support'
+  | null;
 
 interface TenantSubscriptionManagerProps {
   tenants: Tenant[];
@@ -66,6 +76,24 @@ export function TenantSubscriptionManager({
   const handleSavePatch = async (patch: TenantSubscriptionPatch) => {
     if (!activeTenant) return;
     await patchSubscription(activeTenant.id, patch);
+    setModal(null);
+    setActiveTenant(null);
+  };
+
+  const handleManualActivate = async (patch: TenantSubscriptionPatch) => {
+    if (!activeTenant) return;
+    await patchSubscription(activeTenant.id, patch);
+    notify(`Abo für „${activeTenant.name}" freigeschaltet.`, 'success');
+    setModal(null);
+    setActiveTenant(null);
+  };
+
+  const handlePaymentFailed = async (patch: TenantSubscriptionPatch) => {
+    if (!activeTenant) return;
+    await patchSubscription(activeTenant.id, patch);
+    notify(`Zahlung für „${activeTenant.name}" als fehlgeschlagen markiert.`, 'success');
+    setModal(null);
+    setActiveTenant(null);
   };
 
   const handleExtendTrial = async (payload: ExtendTrialPayload) => {
@@ -170,6 +198,14 @@ export function TenantSubscriptionManager({
           setActiveTenant(t);
           setModal('activate');
         }}
+        onReleasePayment={(t) => {
+          setActiveTenant(t);
+          setModal('release');
+        }}
+        onMarkPaymentFailed={(t) => {
+          setActiveTenant(t);
+          setModal('paymentFailed');
+        }}
         onBlock={handleBlock}
         onUnblock={handleUnblock}
         onSupport={(t) => {
@@ -203,6 +239,24 @@ export function TenantSubscriptionManager({
         open={modal === 'activate'}
         onClose={() => setModal(null)}
         onSave={handleSavePatch}
+      />
+      <ManualActivatePaymentModal
+        tenant={activeTenant}
+        open={modal === 'release'}
+        onClose={() => {
+          setModal(null);
+          setActiveTenant(null);
+        }}
+        onActivate={handleManualActivate}
+      />
+      <MarkPaymentFailedModal
+        tenant={activeTenant}
+        open={modal === 'paymentFailed'}
+        onClose={() => {
+          setModal(null);
+          setActiveTenant(null);
+        }}
+        onConfirm={handlePaymentFailed}
       />
       <SupportAccessModal
         tenant={activeTenant}

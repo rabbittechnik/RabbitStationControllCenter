@@ -13,6 +13,7 @@ export const STATUS_OPTIONS: { id: SubscriptionStatusId; label: string }[] = [
   { id: 'past_due', label: 'Zahlung offen' },
   { id: 'cancelled', label: 'Gekündigt' },
   { id: 'blocked', label: 'Gesperrt' },
+  { id: 'pending_payment', label: 'Zahlung ausstehend' },
 ];
 
 const PLAN_LABELS: Record<string, string> = {
@@ -28,6 +29,7 @@ const STATUS_LABELS: Record<string, string> = {
   past_due: 'Zahlung offen',
   cancelled: 'Gekündigt',
   blocked: 'Gesperrt',
+  pending_payment: 'Zahlung ausstehend',
 };
 
 const STATUS_CLASSES: Record<string, string> = {
@@ -37,6 +39,7 @@ const STATUS_CLASSES: Record<string, string> = {
   past_due: 'bg-orange-600/20 text-orange-400',
   cancelled: 'bg-slate-500/20 text-slate-400',
   blocked: 'bg-neon-red/15 text-red-300',
+  pending_payment: 'bg-amber-500/20 text-amber-300',
 };
 
 export function planLabel(plan: string): string {

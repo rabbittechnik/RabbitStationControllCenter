@@ -34,6 +34,12 @@ type MainTenant = {
   currentPeriodStart?: string | null;
   currentPeriodEnd?: string | null;
   blockedReason?: string | null;
+  paymentProvider?: string | null;
+  paymentStatus?: string | null;
+  requestedPlan?: string | null;
+  paymentStartedAt?: string | null;
+  paymentConfirmedAt?: string | null;
+  paymentReference?: string | null;
   created_at?: string;
 };
 
@@ -66,6 +72,7 @@ function resolveStatus(t: MainTenant): string {
   const blocked = t.blockedReason != null && String(t.blockedReason).trim() !== '';
   if (blocked || t.subscriptionStatus === 'blocked') return 'blocked';
   const status = t.subscriptionStatus ?? 'unknown';
+  if (status === 'pending_payment') return 'pending_payment';
   if (status === 'trial') {
     const days = t.remainingDays ?? t.trialDaysLeft;
     if (days != null && days <= 0) return 'expired';
@@ -104,6 +111,13 @@ export function mapTenants(rows: MainTenant[]): Tenant[] {
       current_period_start: t.currentPeriodStart ?? null,
       current_period_end: t.currentPeriodEnd ?? null,
       blocked_reason: t.blockedReason ?? null,
+      subscription_status: t.subscriptionStatus ?? status,
+      payment_provider: t.paymentProvider ?? null,
+      payment_status: t.paymentStatus ?? 'none',
+      requested_plan: t.requestedPlan ?? null,
+      payment_started_at: t.paymentStartedAt ?? null,
+      payment_confirmed_at: t.paymentConfirmedAt ?? null,
+      payment_reference: t.paymentReference ?? null,
     };
   });
 }
@@ -122,7 +136,21 @@ export function mapSubscriptionSummary(
   const trial = count('trial');
   const expired = count('expired');
   const pastDue = count('past_due');
+  const pendingPayment = count('pending_payment');
   const total = by.reduce((s, r) => s + r.c, 0) || tenants.length;
+
+  const pendingFromTenants = tenants.filter(
+    (t) => t.payment_status === 'pending' || t.status === 'pending_payment',
+  ).length;
+  const sumupPending = tenants.filter(
+    (t) =>
+      t.payment_status === 'pending' &&
+      (t.payment_provider ?? '').toLowerCase() === 'sumup',
+  ).length;
+  const planRevenue: Record<string, number> = { starter: 19.9, pro: 39.9, multi_station: 69.9 };
+  const estimatedRevenue = tenants
+    .filter((t) => t.status === 'active')
+    .reduce((s, t) => s + (planRevenue[t.plan] ?? 0), 0);
 
   const today = new Date().toISOString().slice(0, 10);
   const trialsExpiringToday = tenants.filter(
@@ -151,10 +179,16 @@ export function mapSubscriptionSummary(
     starterCustomers,
     proCustomers,
     multiStationCustomers,
-    openPayments: pastDue,
-    monthlyRevenue: 0,
+    openPayments: pastDue + pendingFromTenants,
+    pendingPayments: pendingFromTenants || pendingPayment,
+    sumupPaymentsStarted: sumupPending,
+    manualReviewCount: pendingFromTenants || pendingPayment,
+    monthlyRevenue: Math.round(estimatedRevenue * 100) / 100,
     monthlyRevenueCurrency: 'EUR',
-    monthlyRevenueTrend: 'Noch keine Zahlungsdaten verfügbar',
+    monthlyRevenueTrend:
+      estimatedRevenue > 0 ?
+        `Geschätzt aus ${active} aktiven Abos`
+      : 'Noch keine aktiven Abos',
   };
 }
 

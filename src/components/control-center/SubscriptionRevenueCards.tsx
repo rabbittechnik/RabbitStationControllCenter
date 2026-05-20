@@ -7,6 +7,7 @@ interface SubscriptionRevenueCardsProps {
   data: SubscriptionSummary | null;
   unavailable?: boolean;
   loading?: boolean;
+  apiOffline?: boolean;
 }
 
 type CardItem = {
@@ -17,7 +18,21 @@ type CardItem = {
   highlight?: boolean;
 };
 
-export function SubscriptionRevenueCards({ data, unavailable, loading }: SubscriptionRevenueCardsProps) {
+export function SubscriptionRevenueCards({
+  data,
+  unavailable,
+  loading,
+  apiOffline,
+}: SubscriptionRevenueCardsProps) {
+  if (apiOffline && !loading) {
+    return (
+      <div id="cc-section-subscriptions">
+        <SectionHeader />
+        <p className="glass-card p-4 text-sm text-orange-200">Haupt-App nicht erreichbar.</p>
+      </div>
+    );
+  }
+
   if (unavailable) {
     return (
       <div id="cc-section-subscriptions">
@@ -28,52 +43,58 @@ export function SubscriptionRevenueCards({ data, unavailable, loading }: Subscri
   }
 
   if (!data || loading) {
-    return (
-      <motionlessSubscriptionSkeleton />
-    );
+    return <SubscriptionSkeleton />;
   }
 
   const hasRevenue = (data.monthlyRevenue ?? 0) > 0;
-  const revenueTrend = hasRevenue ?
-    (data.monthlyRevenueTrend ?? '–')
-  : 'Noch keine Zahlungsdaten verfügbar';
+  const pending = data.pendingPayments ?? 0;
+  const active = data.activeSubscriptions ?? 0;
 
   const cards: CardItem[] = [
-    { title: 'Aktive Tenants', value: String(data.activeTenants ?? 0), trend: data.activeTenantsTrend ?? '–' },
-    { title: 'Aktive Testphasen', value: String(data.activeTrials ?? data.trials ?? 0), trend: data.trialsTrend ?? '–' },
     {
-      title: 'Heute ablaufende Trials',
-      value: String(data.trialsExpiringToday ?? 0),
-      trend: 'Trial endet heute',
+      title: 'Zahlungen ausstehend',
+      value: String(pending),
+      trend: pending > 0 ? 'Manuell zu prüfen' : 'Keine offenen SumUp-Zahlungen.',
+      warn: pending > 0,
     },
     {
-      title: 'Abgelaufene Trials',
+      title: 'SumUp gestartet',
+      value: String(data.sumupPaymentsStarted ?? pending),
+      trend: 'Zahlungsanbieter SumUp',
+      warn: (data.sumupPaymentsStarted ?? 0) > 0,
+    },
+    {
+      title: 'Manuell zu prüfen',
+      value: String(data.manualReviewCount ?? pending),
+      trend: 'Freischaltung im Control Center',
+      warn: (data.manualReviewCount ?? 0) > 0,
+    },
+    {
+      title: 'Aktive Abos',
+      value: String(active),
+      trend: active > 0 ? data.activeSubscriptionsTrend ?? '–' : 'Keine aktiven Abos.',
+      highlight: active > 0,
+    },
+    {
+      title: 'Abgelaufene Testphasen',
       value: String(data.expiredTrials ?? 0),
       trend: 'Status expired / Trial beendet',
     },
     {
-      title: 'Aktive Abos',
-      value: String(data.activeSubscriptions ?? 0),
-      trend: data.activeSubscriptionsTrend ?? '–',
-    },
-    { title: 'Starter-Kunden', value: String(data.starterCustomers ?? 0), trend: 'Plan Starter' },
-    { title: 'Pro-Kunden', value: String(data.proCustomers ?? 0), trend: 'Plan Pro' },
-    {
-      title: 'Multi-Station-Kunden',
-      value: String(data.multiStationCustomers ?? 0),
-      trend: 'Plan Multi-Station',
-    },
-    {
-      title: 'Offene Zahlungen',
-      value: String(data.openPayments ?? 0),
-      trend: 'Status past_due',
-      warn: (data.openPayments ?? 0) > 0,
-    },
-    {
-      title: 'Monatsumsatz',
+      title: 'Monatsumsatz geschätzt',
       value: hasRevenue ? formatCurrency(data.monthlyRevenue ?? 0) : '–',
-      trend: revenueTrend,
+      trend: data.monthlyRevenueTrend ?? '–',
       highlight: true,
+    },
+    {
+      title: 'Aktive Tenants',
+      value: String(data.activeTenants ?? 0),
+      trend: data.activeTenantsTrend ?? '–',
+    },
+    {
+      title: 'Aktive Testphasen',
+      value: String(data.activeTrials ?? data.trials ?? 0),
+      trend: data.trialsTrend ?? '–',
     },
   ];
 
@@ -88,15 +109,15 @@ export function SubscriptionRevenueCards({ data, unavailable, loading }: Subscri
 function SectionHeader() {
   return (
     <div className="mb-3">
-      <h3 className="text-sm font-semibold text-white">Abos &amp; Umsatz</h3>
-      <p className="text-xs text-slate-500">Live-Daten der Haupt-App</p>
+      <h3 className="text-sm font-semibold text-white">Abos &amp; Zahlungen</h3>
+      <p className="text-xs text-slate-500">SumUp-Zahlungen und manuelle Freischaltung</p>
     </div>
   );
 }
 
 function CardsGrid({ cards, hasRevenue }: { cards: CardItem[]; hasRevenue: boolean }) {
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       {cards.map((card, i) => (
         <motion.div
           key={card.title}
@@ -126,21 +147,15 @@ function CardsGrid({ cards, hasRevenue }: { cards: CardItem[]; hasRevenue: boole
   );
 }
 
-function motionlessSubscriptionSkeleton() {
+function SubscriptionSkeleton() {
   return (
     <div id="cc-section-subscriptions">
       <SectionHeader />
-      <SkeletonGrid />
-    </div>
-  );
-}
-
-function SkeletonGrid() {
-  return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-      {Array.from({ length: 10 }).map((_, i) => (
-        <div key={i} className="glass-card h-20 animate-pulse" />
-      ))}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} className="glass-card h-20 animate-pulse" />
+        ))}
+      </div>
     </div>
   );
 }

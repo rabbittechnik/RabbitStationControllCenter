@@ -1,6 +1,12 @@
 import { Building2, Crown, Gem, Layers } from 'lucide-react';
 import type { Tenant } from '../../types';
 import { formatRelativeActivity, formatTrialEnd } from '../../utils/format';
+import {
+  isPaymentPending,
+  paymentBadgeClass,
+  paymentStatusLabel,
+  requestedPlanLabel,
+} from '../../utils/paymentDisplay';
 import { planLabel, statusBadgeClass, statusLabel, trialDaysLabel } from '../../utils/tenantPlan';
 import { TenantActionMenu, type TenantAction } from './TenantActionMenu';
 
@@ -13,6 +19,8 @@ interface TenantOverviewTableProps {
   onChangePlan: (tenant: Tenant) => void;
   onExtendTrial: (tenant: Tenant) => void;
   onActivate: (tenant: Tenant) => void;
+  onReleasePayment?: (tenant: Tenant) => void;
+  onMarkPaymentFailed?: (tenant: Tenant) => void;
   onBlock: (tenant: Tenant) => void;
   onUnblock: (tenant: Tenant) => void;
   onSupport: (tenant: Tenant) => void;
@@ -54,6 +62,8 @@ export function TenantOverviewTable({
   onChangePlan,
   onExtendTrial,
   onActivate,
+  onReleasePayment,
+  onMarkPaymentFailed,
   onBlock,
   onUnblock,
   onSupport,
@@ -84,6 +94,14 @@ export function TenantOverviewTable({
       case 'activate':
         onActivate(tenant);
         break;
+      case 'releaseSubscription':
+        onReleasePayment?.(tenant);
+        break;
+      case 'markPaymentFailed':
+        onMarkPaymentFailed?.(tenant);
+        break;
+      case 'keepPaymentOpen':
+        break;
       case 'block':
         onBlock(tenant);
         break;
@@ -106,18 +124,19 @@ export function TenantOverviewTable({
         <span className="text-[10px] text-slate-500">{filtered.length} Mandanten</span>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1200px] text-left text-xs">
+        <table className="w-full min-w-[1320px] text-left text-xs">
           <thead>
             <tr className="border-b border-white/5 text-slate-500">
               <th className="pb-2 font-medium">Firma / Tenant</th>
               <th className="pb-2 font-medium">Station</th>
               <th className="pb-2 font-medium">Betreiber-E-Mail</th>
-              <th className="pb-2 font-medium">Plan</th>
-              <th className="pb-2 font-medium">Status</th>
+              <th className="pb-2 font-medium">Aktueller Plan</th>
+              <th className="pb-2 font-medium">Gewünschter Plan</th>
+              <th className="pb-2 font-medium">Zahlungsstatus</th>
+              <th className="pb-2 font-medium">Abo-Status</th>
               <th className="pb-2 font-medium">Trial-Ende</th>
               <th className="pb-2 font-medium">Resttage</th>
               <th className="pb-2 font-medium">Mitarbeiter</th>
-              <th className="pb-2 font-medium">Stationen</th>
               <th className="pb-2 font-medium">Letzte Aktivität</th>
               <th className="pb-2 font-medium">Aktionen</th>
             </tr>
@@ -125,7 +144,7 @@ export function TenantOverviewTable({
           <tbody>
             {filtered.length === 0 ?
               <tr>
-                <td colSpan={11} className="py-8 text-center text-sm text-slate-500">
+                <td colSpan={12} className="py-8 text-center text-sm text-slate-500">
                   {emptyMessage ?? 'Keine Tenants gefunden.'}
                 </td>
               </tr>
@@ -133,7 +152,9 @@ export function TenantOverviewTable({
             {filtered.map((tenant) => (
               <tr
                 key={tenant.id}
-                className="border-b border-white/5 transition hover:bg-white/[0.02]"
+                className={`border-b border-white/5 transition hover:bg-white/[0.02] ${
+                  isPaymentPending(tenant) ? 'bg-amber-500/[0.03]' : ''
+                }`}
               >
                 <td className="py-3">
                   <span className="flex items-center gap-2 font-medium text-slate-200">
@@ -155,6 +176,18 @@ export function TenantOverviewTable({
                 <td className="py-3">
                   <PlanBadge plan={tenant.plan} />
                 </td>
+                <td className="py-3 text-slate-300">
+                  {requestedPlanLabel(tenant) ?
+                    <span className="text-neon-cyan">Gewünscht: {requestedPlanLabel(tenant)}</span>
+                  : '–'}
+                </td>
+                <td className="py-3">
+                  <span
+                    className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${paymentBadgeClass(tenant)}`}
+                  >
+                    {paymentStatusLabel(tenant.payment_status)}
+                  </span>
+                </td>
                 <td className="py-3">
                   <StatusBadge status={tenant.status} />
                 </td>
@@ -163,7 +196,6 @@ export function TenantOverviewTable({
                   {trialDaysLabel(tenant.trial_days_left, tenant.status)}
                 </td>
                 <td className="py-3 text-slate-400">{tenant.employees}</td>
-                <td className="py-3 text-slate-400">{tenant.station_count}</td>
                 <td className="py-3 text-slate-400">
                   {formatRelativeActivity(
                     tenant.last_activity_minutes,
