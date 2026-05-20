@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { MoreHorizontal } from 'lucide-react';
 import type { Tenant } from '../../types';
+import { canExtendTrial, extendTrialDisabledReason } from '../../utils/trialExtend';
 
 export type TenantAction =
   | 'details'
@@ -31,11 +32,25 @@ export function TenantActionMenu({ tenant, disabled, onAction }: TenantActionMen
   }, []);
 
   const isBlocked = tenant.status === 'blocked' || tenant.locked === 1;
+  const extendAllowed = canExtendTrial(tenant);
+  const extendTooltip = extendTrialDisabledReason(tenant);
 
-  const actions: { key: TenantAction; label: string; hidden?: boolean }[] = [
+  const actions: {
+    key: TenantAction;
+    label: string;
+    hidden?: boolean;
+    disabled?: boolean;
+    title?: string;
+  }[] = [
     { key: 'details', label: 'Details öffnen' },
     { key: 'changePlan', label: 'Plan ändern' },
-    { key: 'extendTrial', label: 'Trial verlängern' },
+    {
+      key: 'extendTrial',
+      label: 'Testzeit verlängern',
+      hidden: !extendAllowed && !extendTooltip,
+      disabled: !extendAllowed,
+      title: extendTooltip ?? undefined,
+    },
     { key: 'activate', label: 'Abo aktivieren' },
     {
       key: isBlocked ? 'unblock' : 'block',
@@ -57,18 +72,21 @@ export function TenantActionMenu({ tenant, disabled, onAction }: TenantActionMen
         <MoreHorizontal className="h-4 w-4" />
       </button>
       {open && !disabled ?
-        <div className="absolute right-0 top-full z-20 mt-1 min-w-[200px] rounded-lg border border-white/10 bg-navy-850 py-1 shadow-xl">
+        <div className="absolute right-0 top-full z-20 mt-1 min-w-[220px] rounded-lg border border-white/10 bg-navy-850 py-1 shadow-xl">
           {actions
             .filter((a) => !a.hidden)
             .map((a) => (
               <button
                 key={a.key}
                 type="button"
+                disabled={a.disabled}
+                title={a.title}
                 onClick={() => {
+                  if (a.disabled) return;
                   onAction(a.key, tenant);
                   setOpen(false);
                 }}
-                className="block w-full px-3 py-2 text-left text-xs text-slate-300 hover:bg-white/5 hover:text-neon-cyan"
+                className="block w-full px-3 py-2 text-left text-xs text-slate-300 hover:bg-white/5 hover:text-neon-cyan disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {a.label}
               </button>

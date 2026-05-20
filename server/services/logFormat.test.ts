@@ -12,6 +12,7 @@ import type { Tenant } from '../types.js';
 
 describe('formatLogAction', () => {
   it('maps known actions to German labels', () => {
+    assert.equal(formatLogAction('trial_extended'), 'Testzeitraum verlängert');
     assert.equal(formatLogAction('login_success'), 'Login erfolgreich');
     assert.equal(
       formatLogAction('registration_welcome_email_failed'),

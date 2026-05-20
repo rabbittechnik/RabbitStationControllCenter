@@ -64,6 +64,13 @@ export interface SystemLog {
   error_code?: string;
   can_resend_welcome?: boolean;
   resend_disabled_reason?: string;
+  trial_old_end?: string;
+  trial_new_end?: string;
+  trial_days_added?: number;
+  trial_extend_reason?: string;
+  trial_extend_note?: string;
+  trial_extend_source?: string;
+  trial_extend_plan?: string;
   created_at: string;
 }
 
@@ -71,11 +78,13 @@ export interface Tenant {
   id: string;
   name: string;
   slug?: string;
+  station_name?: string | null;
   operator?: string;
   status: string;
   plan: string;
   trial_end: string | null;
   trial_days_left: number | null;
+  trial_extended_count?: number;
   employees: number;
   station_count: number;
   last_activity_minutes: number | null;

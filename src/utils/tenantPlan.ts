@@ -66,6 +66,7 @@ export function addDaysToIso(dateIso: string | null | undefined, days: number): 
 }
 
 export function trialDaysLabel(days: number | null, status?: string): string {
+  if (status === 'expired') return 'abgelaufen';
   if (status && status !== 'trial') return '–';
   if (days == null) return '–';
   if (days <= 0) return 'abgelaufen';

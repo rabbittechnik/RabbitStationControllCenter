@@ -16,6 +16,11 @@ import {
   startLiveSupportSession,
 } from '../services/controlCenterDataService.js';
 import {
+  extendLiveTrial,
+  extendTrialHttpStatus,
+  mapExtendTrialUserMessage,
+} from '../services/extendTrialProxy.js';
+import {
   mapResendWelcomeEmailUserMessage,
   resendLiveWelcomeEmail,
   resendWelcomeEmailHttpStatus,
@@ -274,6 +279,72 @@ router.post('/tenants/:tenantId/support-sessions/start', async (req, res) => {
           meta: buildErrorMeta(e.message),
         });
       }
+    }
+    handleError(res, e);
+  }
+});
+
+router.post('/tenants/:tenantId/trial/extend', async (req, res) => {
+  try {
+    const tenantId = String(req.params.tenantId ?? '').trim();
+    if (!tenantId) {
+      return res.status(400).json({
+        ok: false,
+        error: 'invalid_params',
+        message: 'Kunde wurde nicht gefunden.',
+        meta: buildErrorMeta('Tenant-ID fehlt.'),
+      });
+    }
+    const body = req.body as {
+      days?: number;
+      newTrialEnd?: string;
+      reason?: string;
+      note?: string;
+    };
+    const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
+    if (!reason) {
+      return res.status(400).json({
+        ok: false,
+        error: 'reason_required',
+        message: mapExtendTrialUserMessage('reason_required'),
+        meta: buildErrorMeta('Grund fehlt.'),
+      });
+    }
+    const hasDays = body.days != null && Number.isFinite(Number(body.days));
+    const hasEnd = typeof body.newTrialEnd === 'string' && body.newTrialEnd.trim().length > 0;
+    if (!hasDays && !hasEnd) {
+      return res.status(400).json({
+        ok: false,
+        error: 'invalid_body',
+        message: 'Bitte Tage oder ein Datum angeben.',
+        meta: buildErrorMeta('days oder newTrialEnd erforderlich.'),
+      });
+    }
+    const result = await extendLiveTrial(tenantId, {
+      days: hasDays ? Number(body.days) : undefined,
+      newTrialEnd: hasEnd ? String(body.newTrialEnd).trim() : undefined,
+      reason,
+      note: typeof body.note === 'string' ? body.note.trim() : undefined,
+    });
+    res.json({
+      ok: true,
+      message: result.message,
+      data: {
+        newTrialEnd: result.newTrialEnd,
+        remainingDays: result.remainingDays,
+      },
+      meta: { source: 'live', apiConfigured: true, apiUrlSet: true, tokenSet: true },
+    });
+  } catch (e) {
+    if (e instanceof RabbitStationApiError) {
+      const message = mapExtendTrialUserMessage(e.code, e.message);
+      const status = extendTrialHttpStatus(e.code, e.status);
+      return res.status(status).json({
+        ok: false,
+        error: e.code,
+        message,
+        meta: buildErrorMeta(e.message),
+      });
     }
     handleError(res, e);
   }

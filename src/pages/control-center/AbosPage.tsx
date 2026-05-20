@@ -8,11 +8,16 @@ import { SubscriptionRevenueCards } from '../../components/control-center/Subscr
 import { AbosTable } from '../../components/control-center/AbosTable';
 import { ActivateSubscriptionModal } from '../../components/control-center/ActivateSubscriptionModal';
 import { ChangePlanModal } from '../../components/control-center/ChangePlanModal';
-import { ExtendTrialModal } from '../../components/control-center/ExtendTrialModal';
+import {
+  ExtendTrialModal,
+  type ExtendTrialPayload,
+} from '../../components/control-center/ExtendTrialModal';
 import { TenantDetailsModal } from '../../components/control-center/TenantDetailsModal';
 import type { TenantAction } from '../../components/control-center/TenantActionMenu';
 import { CC_ROUTES } from '../../control-center/routes';
 import { subscriptionErrorMessage } from '../../utils/subscriptionMessages';
+import { formatTrialEnd } from '../../utils/format';
+import { trialExtendErrorMessage } from '../../utils/trialExtend';
 
 type ModalKind = 'details' | 'plan' | 'trial' | 'activate' | null;
 
@@ -21,6 +26,7 @@ export function AbosPage() {
   const navigate = useNavigate();
   const [activeTenant, setActiveTenant] = useState<Tenant | null>(null);
   const [modal, setModal] = useState<ModalKind>(null);
+  const [flash, setFlash] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const paymentsConfigured = data?.health?.payments?.configured !== false;
   const paymentsMsg = data?.health?.payments?.message;
@@ -75,6 +81,32 @@ export function AbosPage() {
     setModal(null);
   };
 
+  const handleExtendTrial = async (payload: ExtendTrialPayload) => {
+    if (!activeTenant) throw new Error('Kein Tenant ausgewählt.');
+    const result = await api.extendTenantTrial(activeTenant.id, payload);
+    if (!result.ok) {
+      const message = trialExtendErrorMessage(result.code ?? result.error, result.message);
+      setFlash({ message, type: 'error' });
+      throw new Error(message);
+    }
+    const response = result.data as {
+      message?: string;
+      data?: { newTrialEnd?: string };
+    };
+    const newEnd = response.data?.newTrialEnd;
+    setFlash({
+      message: newEnd
+        ? `Testzeitraum wurde verlängert. Neues Trial-Ende: ${formatTrialEnd(newEnd)}`
+        : 'Testzeitraum wurde verlängert.',
+      type: 'success',
+    });
+    window.setTimeout(() => setFlash(null), 8000);
+    setModal(null);
+    setActiveTenant(null);
+    await refresh();
+    return { newTrialEnd: newEnd ?? '' };
+  };
+
   return (
     <>
       <PageHeader
@@ -85,6 +117,17 @@ export function AbosPage() {
         <p className="mb-4 rounded-lg border border-white/10 bg-navy-900/60 px-4 py-2 text-xs text-slate-400">
           {paymentsMsg ?? 'Zahlungssystem noch nicht konfiguriert'}
         </p>
+      : null}
+      {flash ?
+        <div
+          className={`mb-4 rounded-lg border px-4 py-2 text-sm ${
+            flash.type === 'success'
+              ? 'border-neon-green/40 bg-neon-green/10 text-neon-green'
+              : 'border-neon-red/40 bg-neon-red/10 text-red-200'
+          }`}
+        >
+          {flash.message}
+        </div>
       : null}
       <SubscriptionRevenueCards
         data={isLive ? (data?.subscriptions ?? null) : null}
@@ -115,7 +158,7 @@ export function AbosPage() {
         tenant={activeTenant}
         open={modal === 'trial'}
         onClose={() => setModal(null)}
-        onSave={handleSavePatch}
+        onExtend={handleExtendTrial}
       />
       <ActivateSubscriptionModal
         tenant={activeTenant}

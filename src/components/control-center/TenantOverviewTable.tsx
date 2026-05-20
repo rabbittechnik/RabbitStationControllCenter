@@ -147,7 +147,7 @@ export function TenantOverviewTable({
                     </span>
                   </span>
                 </td>
-                <td className="py-3 text-slate-400">{tenant.slug ?? '–'}</td>
+                <td className="py-3 text-slate-400">{tenant.station_name ?? tenant.slug ?? '–'}</td>
                 <td className="max-w-[180px] truncate py-3 text-slate-400" title={tenant.operator}>
                   {tenant.operator ?? '–'}
                 </td>

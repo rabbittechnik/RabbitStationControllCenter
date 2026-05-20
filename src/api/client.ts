@@ -208,4 +208,18 @@ export const api = {
       `/control-center/tenants/${encodeURIComponent(tenantId)}/users/${encodeURIComponent(userId)}/resend-welcome-email`,
       { method: 'POST', body: JSON.stringify({}) },
     ),
+
+  extendTenantTrial: (
+    tenantId: string,
+    body: { days?: number; newTrialEnd?: string; reason: string; note?: string },
+  ) =>
+    requestSafe<{
+      ok: boolean;
+      message?: string;
+      data?: { newTrialEnd: string; remainingDays?: number };
+      error?: string;
+    }>(`/control-center/tenants/${encodeURIComponent(tenantId)}/trial/extend`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 };

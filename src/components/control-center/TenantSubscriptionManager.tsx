@@ -5,9 +5,11 @@ import {
   SUBSCRIPTION_SUCCESS,
   subscriptionErrorMessage,
 } from '../../utils/subscriptionMessages';
+import { formatTrialEnd } from '../../utils/format';
+import { trialExtendErrorMessage } from '../../utils/trialExtend';
 import { ActivateSubscriptionModal } from './ActivateSubscriptionModal';
 import { ChangePlanModal } from './ChangePlanModal';
-import { ExtendTrialModal } from './ExtendTrialModal';
+import { ExtendTrialModal, type ExtendTrialPayload } from './ExtendTrialModal';
 import { SupportAccessModal } from './SupportAccessModal';
 import { TenantDetailsModal } from './TenantDetailsModal';
 import { TenantOverviewTable } from './TenantOverviewTable';
@@ -64,6 +66,31 @@ export function TenantSubscriptionManager({
   const handleSavePatch = async (patch: TenantSubscriptionPatch) => {
     if (!activeTenant) return;
     await patchSubscription(activeTenant.id, patch);
+  };
+
+  const handleExtendTrial = async (payload: ExtendTrialPayload) => {
+    if (!activeTenant) throw new Error('Kein Tenant ausgewählt.');
+    const result = await api.extendTenantTrial(activeTenant.id, payload);
+    if (!result.ok) {
+      const message = trialExtendErrorMessage(result.code ?? result.error, result.message);
+      notify(message, 'error');
+      throw new Error(message);
+    }
+    const response = result.data as {
+      message?: string;
+      data?: { newTrialEnd?: string };
+    };
+    const newEnd = response.data?.newTrialEnd;
+    notify(
+      newEnd
+        ? `Testzeitraum wurde verlängert. Neues Trial-Ende: ${formatTrialEnd(newEnd)}`
+        : 'Testzeitraum wurde verlängert.',
+      'success',
+    );
+    setModal(null);
+    setActiveTenant(null);
+    await onUpdated();
+    return { newTrialEnd: newEnd ?? '' };
   };
 
   const handleBlock = async (tenant: Tenant) => {
@@ -165,8 +192,11 @@ export function TenantSubscriptionManager({
       <ExtendTrialModal
         tenant={activeTenant}
         open={modal === 'trial'}
-        onClose={() => setModal(null)}
-        onSave={handleSavePatch}
+        onClose={() => {
+          setModal(null);
+          setActiveTenant(null);
+        }}
+        onExtend={handleExtendTrial}
       />
       <ActivateSubscriptionModal
         tenant={activeTenant}

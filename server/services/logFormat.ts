@@ -14,6 +14,8 @@ const ACTION_LABELS: Record<string, string> = {
   backup_failed: 'Backup fehlgeschlagen',
   subscription_changed: 'Abo geändert',
   'subscription.changed': 'Abo geändert',
+  trial_extended: 'Testzeitraum verlängert',
+  trial_extend_failed: 'Testzeitraum-Verlängerung fehlgeschlagen',
   setup_completed: 'Setup abgeschlossen',
   tour_completed: 'Einführung abgeschlossen',
 };
@@ -68,6 +70,13 @@ type LogMeta = {
   stationName?: string;
   safeMessage?: string;
   errorCode?: string;
+  oldTrialEnd?: string;
+  newTrialEnd?: string;
+  daysAdded?: number;
+  reason?: string;
+  note?: string;
+  source?: string;
+  plan?: string;
 };
 
 function parseMetadata(raw?: string | null): LogMeta {
@@ -96,6 +105,22 @@ function parseMetadata(raw?: string | null): LogMeta {
       stationName: typeof m.stationName === 'string' ? m.stationName : undefined,
       safeMessage: typeof m.safeMessage === 'string' ? m.safeMessage : undefined,
       errorCode: typeof m.errorCode === 'string' ? m.errorCode : undefined,
+      oldTrialEnd:
+        typeof m.oldTrialEnd === 'string' ? m.oldTrialEnd
+        : typeof m.old_trial_end === 'string' ? m.old_trial_end
+        : undefined,
+      newTrialEnd:
+        typeof m.newTrialEnd === 'string' ? m.newTrialEnd
+        : typeof m.new_trial_end === 'string' ? m.new_trial_end
+        : undefined,
+      daysAdded:
+        typeof m.daysAdded === 'number' ? m.daysAdded
+        : typeof m.days_added === 'number' ? m.days_added
+        : undefined,
+      reason: typeof m.reason === 'string' ? m.reason : undefined,
+      note: typeof m.note === 'string' ? m.note : undefined,
+      source: typeof m.source === 'string' ? m.source : undefined,
+      plan: typeof m.plan === 'string' ? m.plan : undefined,
     };
   } catch {
     return {};
@@ -179,6 +204,13 @@ export function enrichLogs(rows: RawLog[], tenants: Tenant[]): SystemLog[] {
       station_name: meta.stationName,
       error_message: meta.safeMessage,
       error_code: meta.errorCode,
+      trial_old_end: meta.oldTrialEnd,
+      trial_new_end: meta.newTrialEnd,
+      trial_days_added: meta.daysAdded,
+      trial_extend_reason: meta.reason,
+      trial_extend_note: meta.note,
+      trial_extend_source: meta.source,
+      trial_extend_plan: meta.plan,
       can_resend_welcome: resend.canResend,
       resend_disabled_reason: resend.disabledReason,
       headline,

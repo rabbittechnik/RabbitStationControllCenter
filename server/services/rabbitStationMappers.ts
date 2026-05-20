@@ -18,13 +18,18 @@ type MainTenant = {
   id: string;
   companyName?: string;
   slug?: string;
+  stationName?: string | null;
+  ownerEmail?: string | null;
   plan?: string;
   subscriptionStatus?: string;
   trialEnd?: string | null;
   trialDaysLeft?: number | null;
+  remainingDays?: number | null;
+  trialExtendedCount?: number;
   setupCompleted?: boolean;
   stationCount?: number;
   userCount?: number;
+  employeeCount?: number;
   contactEmail?: string;
   currentPeriodStart?: string | null;
   currentPeriodEnd?: string | null;
@@ -60,7 +65,12 @@ export function mapHealth(
 function resolveStatus(t: MainTenant): string {
   const blocked = t.blockedReason != null && String(t.blockedReason).trim() !== '';
   if (blocked || t.subscriptionStatus === 'blocked') return 'blocked';
-  return t.subscriptionStatus ?? 'unknown';
+  const status = t.subscriptionStatus ?? 'unknown';
+  if (status === 'trial') {
+    const days = t.remainingDays ?? t.trialDaysLeft;
+    if (days != null && days <= 0) return 'expired';
+  }
+  return status;
 }
 
 export function normalizePlan(plan?: string): string {
@@ -79,12 +89,14 @@ export function mapTenants(rows: MainTenant[]): Tenant[] {
       id: t.id,
       name: t.companyName ?? t.slug ?? t.id,
       slug: t.slug,
-      operator: t.contactEmail ?? undefined,
+      station_name: t.stationName ?? null,
+      operator: t.ownerEmail ?? t.contactEmail ?? undefined,
       status,
       plan: normalizePlan(t.plan),
       trial_end: t.trialEnd ?? null,
-      trial_days_left: t.trialDaysLeft ?? null,
-      employees: t.userCount ?? 0,
+      trial_days_left: t.remainingDays ?? t.trialDaysLeft ?? null,
+      trial_extended_count: t.trialExtendedCount ?? 0,
+      employees: t.employeeCount ?? t.userCount ?? 0,
       station_count: t.stationCount ?? 0,
       last_activity_minutes: null,
       last_activity_at: null,
