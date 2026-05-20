@@ -1,13 +1,29 @@
-import { useEffect, useRef, useState } from 'react';
-import { MoreHorizontal } from 'lucide-react';
+import { useRef, useState } from 'react';
+import {
+  Building2,
+  ClipboardList,
+  CreditCard,
+  FileText,
+  Headphones,
+  Layers,
+  Lock,
+  LockOpen,
+  MoreHorizontal,
+  Timer,
+  Unlock,
+} from 'lucide-react';
 import type { Tenant } from '../../types';
 import { canExtendTrial, extendTrialDisabledReason } from '../../utils/trialExtend';
+import { ActionMenuDivider, ActionMenuItem, ActionMenuPortal } from './ActionMenuPortal';
 
 export type TenantAction =
   | 'details'
+  | 'openCustomer'
   | 'changePlan'
   | 'extendTrial'
   | 'activate'
+  | 'releaseSubscription'
+  | 'checkPayment'
   | 'block'
   | 'unblock'
   | 'logs'
@@ -21,19 +37,17 @@ interface TenantActionMenuProps {
 
 export function TenantActionMenu({ tenant, disabled, onAction }: TenantActionMenuProps) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
+  const anchorRef = useRef<HTMLButtonElement>(null);
 
   const isBlocked = tenant.status === 'blocked' || tenant.locked === 1;
   const extendAllowed = canExtendTrial(tenant);
   const extendTooltip = extendTrialDisabledReason(tenant);
+  const paymentPending = tenant.status === 'past_due';
+
+  const run = (action: TenantAction) => {
+    onAction(action, tenant);
+    setOpen(false);
+  };
 
   const actions: {
     key: TenantAction;
@@ -41,58 +55,89 @@ export function TenantActionMenu({ tenant, disabled, onAction }: TenantActionMen
     hidden?: boolean;
     disabled?: boolean;
     title?: string;
+    icon?: React.ReactNode;
+    dividerBefore?: boolean;
   }[] = [
-    { key: 'details', label: 'Details öffnen' },
-    { key: 'changePlan', label: 'Plan ändern' },
+    { key: 'details', label: 'Details öffnen', icon: <FileText className="h-4 w-4" /> },
+    { key: 'openCustomer', label: 'Kunde öffnen', icon: <Building2 className="h-4 w-4" /> },
+    { key: 'changePlan', label: 'Plan ändern', icon: <Layers className="h-4 w-4" />, dividerBefore: true },
     {
       key: 'extendTrial',
       label: 'Testzeit verlängern',
+      icon: <Timer className="h-4 w-4" />,
       hidden: !extendAllowed && !extendTooltip,
       disabled: !extendAllowed,
       title: extendTooltip ?? undefined,
     },
-    { key: 'activate', label: 'Abo aktivieren' },
+    { key: 'activate', label: 'Abo aktivieren', icon: <Unlock className="h-4 w-4" /> },
+    {
+      key: 'releaseSubscription',
+      label: 'Abo freischalten',
+      icon: <Unlock className="h-4 w-4" />,
+      hidden: !paymentPending,
+      disabled: true,
+      title: 'Demnächst verfügbar',
+    },
+    {
+      key: 'checkPayment',
+      label: 'Zahlung prüfen',
+      icon: <CreditCard className="h-4 w-4" />,
+      hidden: !paymentPending,
+      disabled: true,
+      title: 'Demnächst verfügbar',
+    },
     {
       key: isBlocked ? 'unblock' : 'block',
       label: isBlocked ? 'Tenant entsperren' : 'Abo pausieren/sperren',
+      icon: isBlocked ? <LockOpen className="h-4 w-4" /> : <Lock className="h-4 w-4" />,
+      dividerBefore: true,
     },
-    { key: 'logs', label: 'Logs anzeigen' },
-    { key: 'support', label: 'Support-Zugriff starten' },
+    { key: 'logs', label: 'Logs anzeigen', icon: <ClipboardList className="h-4 w-4" /> },
+    {
+      key: 'support',
+      label: 'Support-Zugriff starten',
+      icon: <Headphones className="h-4 w-4" />,
+    },
   ];
 
+  const visible = actions.filter((a) => !a.hidden);
+
   return (
-    <div ref={ref} className="relative">
+    <>
       <button
+        ref={anchorRef}
         type="button"
         disabled={disabled}
-        onClick={() => setOpen(!open)}
+        onClick={() => setOpen((v) => !v)}
         className="rounded p-1 text-slate-500 hover:bg-white/10 hover:text-white disabled:opacity-40"
         aria-label="Aktionen"
+        aria-haspopup="menu"
+        aria-expanded={open}
       >
         <MoreHorizontal className="h-4 w-4" />
       </button>
-      {open && !disabled ?
-        <div className="absolute right-0 top-full z-20 mt-1 min-w-[220px] rounded-lg border border-white/10 bg-navy-850 py-1 shadow-xl">
-          {actions
-            .filter((a) => !a.hidden)
-            .map((a) => (
-              <button
-                key={a.key}
-                type="button"
-                disabled={a.disabled}
-                title={a.title}
-                onClick={() => {
-                  if (a.disabled) return;
-                  onAction(a.key, tenant);
-                  setOpen(false);
-                }}
-                className="block w-full px-3 py-2 text-left text-xs text-slate-300 hover:bg-white/5 hover:text-neon-cyan disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {a.label}
-              </button>
-            ))}
-        </div>
-      : null}
-    </div>
+      <ActionMenuPortal
+        open={open && !disabled}
+        onClose={() => setOpen(false)}
+        anchorRef={anchorRef}
+        ariaLabel={`Aktionen für ${tenant.name}`}
+      >
+        {visible.map((a) => (
+          <div key={a.key}>
+            {a.dividerBefore ? <ActionMenuDivider /> : null}
+            <ActionMenuItem
+              label={a.label}
+              icon={a.icon}
+              disabled={a.disabled}
+              title={a.title}
+              onClick={() => {
+                if (a.disabled) return;
+                run(a.key);
+              }}
+            />
+          </div>
+        ))}
+      </ActionMenuPortal>
+    </>
   );
 }

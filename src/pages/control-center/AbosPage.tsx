@@ -44,6 +44,7 @@ export function AbosPage() {
     setActiveTenant(tenant);
     switch (action) {
       case 'details':
+      case 'openCustomer':
         setModal('details');
         break;
       case 'changePlan':

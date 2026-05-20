@@ -72,6 +72,7 @@ export function TenantOverviewTable({
   const handleAction = (action: TenantAction, tenant: Tenant) => {
     switch (action) {
       case 'details':
+      case 'openCustomer':
         onDetails(tenant);
         break;
       case 'changePlan':
